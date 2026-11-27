@@ -20,6 +20,8 @@ export default function Login({ onDone }) {
     e.preventDefault()
     const r = await api('/login', 'POST', f)
     setToken(r.token)
+    // Bỏ chọn ô nhập trước khi rời màn đăng nhập để bàn phím đóng hẳn và trang nhận được sự kiện rời ô
+    document.activeElement?.blur?.()
     onDone()
   })
   return (
