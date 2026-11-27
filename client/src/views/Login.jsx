@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, setToken } from '../api'
 import { useApp } from '../ctx'
+import { Input } from '../components/Fields.jsx'
 
 const EyeIcon = ({ off }) => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -31,10 +32,10 @@ export default function Login({ onDone }) {
         </div>
         <form className="login" onSubmit={submit}>
           <label>Tài khoản</label>
-          <input autoComplete="username" autoCapitalize="none" required value={f.username} onChange={set('username')} />
+          <Input autoComplete="username" autoCapitalize="none" required value={f.username} onChange={set('username')} />
           <label>Mật khẩu</label>
           <div className="pwfield">
-            <input type={show ? 'text' : 'password'} autoComplete="current-password" required value={f.password} onChange={set('password')} />
+            <Input endGap={44} type={show ? 'text' : 'password'} autoComplete="current-password" required value={f.password} onChange={set('password')} />
             <button type="button" className="eye" aria-label={show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} aria-pressed={show} onClick={() => setShow(!show)}>
               <EyeIcon off={show} />
             </button>

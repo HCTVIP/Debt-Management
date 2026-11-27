@@ -3,6 +3,7 @@ import { api } from '../api'
 import { useApp } from '../ctx'
 import { parseLatLng, placeNameFromLink } from '../utils'
 import MapPicker from './MapPicker.jsx'
+import { Input } from './Fields.jsx'
 
 /**
  * Chọn một vị trí (điểm nhận / điểm giao) ngay trong ứng dụng, không mở tab mới.
@@ -56,7 +57,7 @@ function LocationField({ label, value, onChange, near }) {
     <div className="locfield">
       <label>{label}</label>
       <div className="locrow">
-        <input
+        <Input
           value={typed}
           placeholder="Nhập địa chỉ rồi bấm Tìm"
           onChange={(e) => {

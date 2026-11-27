@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { useApp } from '../ctx'
+import { Input, Textarea } from './Fields.jsx'
 
 export default function PartnerForm({ partner, close }) {
   const { run, reload } = useApp()
@@ -23,13 +24,13 @@ export default function PartnerForm({ partner, close }) {
     <form onSubmit={submit}>
       <h2>{p.id ? 'Sửa' : 'Thêm'} khách hàng</h2>
       <label>Tên *</label>
-      <input required value={f.name} onChange={set('name')} />
+      <Input required value={f.name} onChange={set('name')} />
       <label>Điện thoại</label>
-      <input type="tel" value={f.phone} onChange={set('phone')} />
+      <Input type="tel" value={f.phone} onChange={set('phone')} />
       <label>Địa chỉ</label>
-      <input value={f.address} onChange={set('address')} />
+      <Input value={f.address} onChange={set('address')} />
       <label>Ghi chú</label>
-      <textarea value={f.note} onChange={set('note')} />
+      <Textarea value={f.note} onChange={set('note')} />
       <div className="acts">
         {p.id && <button type="button" className="btn dan" onClick={del}>Xoá</button>}
         <button className="btn">Lưu</button>

@@ -4,6 +4,7 @@ import { useApp } from '../ctx'
 import { today } from '../utils'
 import { Seg } from './Bits.jsx'
 import DateInput from './DateInput.jsx'
+import { Input } from './Fields.jsx'
 
 const CATEGORIES = ['Xăng dầu', 'Lương', 'Sửa xe', 'Điện nước', 'Vận chuyển', 'Khác']
 
@@ -30,14 +31,14 @@ export default function CashForm({ entry, close }) {
       <h2>{e0.id ? 'Sửa khoản' : 'Thêm khoản'} {f.kind === 'in' ? 'thu' : 'chi'}</h2>
       <Seg value={f.kind} onChange={(kind) => setF({ ...f, kind })} options={[['out', 'Chi'], ['in', 'Thu khác']]} />
       <label>Số tiền</label>
-      <input type="number" inputMode="decimal" min="0" step="any" required value={f.amount} onChange={set('amount')} />
+      <Input type="number" inputMode="decimal" min="0" step="any" required value={f.amount} onChange={set('amount')} />
       <label>Ngày</label>
       <DateInput value={f.entry_date} onChange={(v) => setF({ ...f, entry_date: v })} />
       <label>Danh mục</label>
-      <input list="cash-cats" value={f.category} onChange={set('category')} placeholder="Ví dụ: Xăng dầu" />
+      <Input list="cash-cats" value={f.category} onChange={set('category')} placeholder="Ví dụ: Xăng dầu" />
       <datalist id="cash-cats">{CATEGORIES.map((c) => <option key={c} value={c} />)}</datalist>
       <label>Ghi chú</label>
-      <input value={f.note} onChange={set('note')} />
+      <Input value={f.note} onChange={set('note')} />
       <div className="acts">
         {e0.id && <button type="button" className="btn dan" onClick={del}>Xoá</button>}
         <button className="btn">Lưu</button>

@@ -19,6 +19,11 @@ export default function DateInput({ type = 'date', value, onChange, display, pla
   return (
     <div className="dfield">
       <span className={text ? '' : 'ph'}>{text || placeholder}</span>
+      {value && (
+        <button type="button" className="fx dfx" tabIndex={-1} aria-label="Xoá ngày" onClick={() => onChange('')}>
+          ✕
+        </button>
+      )}
       <CalendarIcon />
       <input
         ref={ref}

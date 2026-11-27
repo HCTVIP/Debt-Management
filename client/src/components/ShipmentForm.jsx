@@ -7,6 +7,7 @@ import { Lnk } from './Bits.jsx'
 import DateInput from './DateInput.jsx'
 import LocationField from './LocationField.jsx'
 import ProofPhotos from './ProofPhotos.jsx'
+import { Input, Select } from './Fields.jsx'
 
 const PICKUP_KEY = 'pickup_default'
 const loadPickup = () => {
@@ -126,7 +127,7 @@ export default function ShipmentForm({ shipment, order, close }) {
         </div>
       ) : (
         <>
-          <input placeholder="Tìm mã đơn / tên khách" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input placeholder="Tìm mã đơn / tên khách" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="pick">
             {found.map((o) => (
               <div key={o.id} className="item link" onClick={() => setOrd(o)}>
@@ -145,17 +146,17 @@ export default function ShipmentForm({ shipment, order, close }) {
         </div>
         <div>
           <label>Trạng thái</label>
-          <select value={f.status} onChange={set('status')}>
+          <Select value={f.status} onChange={set('status')}>
             {Object.entries(SHIP_STATUS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </Select>
         </div>
         <div>
           <label>Biển số xe</label>
-          <input value={f.vehicle} onChange={set('vehicle')} />
+          <Input value={f.vehicle} onChange={set('vehicle')} />
         </div>
         <div>
           <label>Tài xế</label>
-          <input value={f.driver} onChange={set('driver')} />
+          <Input value={f.driver} onChange={set('driver')} />
         </div>
       </div>
 
@@ -178,9 +179,9 @@ export default function ShipmentForm({ shipment, order, close }) {
       </div>
 
       <label>Cước vận chuyển</label>
-      <input type="number" inputMode="decimal" min="0" step="any" value={f.fee} onChange={set('fee')} />
+      <Input type="number" inputMode="decimal" min="0" step="any" value={f.fee} onChange={set('fee')} />
       <label>Ghi chú</label>
-      <input value={f.note} onChange={set('note')} />
+      <Input value={f.note} onChange={set('note')} />
 
       <ProofPhotos shipmentId={s.id} pending={pending} setPending={setPending} />
 
