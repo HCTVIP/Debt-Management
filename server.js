@@ -383,9 +383,6 @@ const haversineKm = (a, b) => {
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
   return 2 * R * Math.asin(Math.sqrt(h))
 }
-const needKey = () => {
-  if (!GOOGLE_MAPS_API_KEY) throw new Error('Chưa cấu hình GOOGLE_MAPS_API_KEY trên máy chủ')
-}
 const gmJson = async (url, init) => {
   const r = await fetch(url, { ...init, signal: AbortSignal.timeout(10000) })
   const j = await r.json().catch(() => ({}))
@@ -397,39 +394,79 @@ const geoResults = (j) => {
   if (j.status !== 'OK') throw new Error('Google Maps: ' + j.status + (j.error_message ? ' - ' + j.error_message : ''))
   return j.results.slice(0, 5).map((r) => ({ address: r.formatted_address, lat: r.geometry.location.lat, lng: r.geometry.location.lng }))
 }
-app.get('/api/maps/status', wrap(async () => ({ enabled: !!GOOGLE_MAPS_API_KEY })))
+// Tìm địa chỉ / đường đi: dùng Google Maps Platform khi có khoá; chưa có khoá thì dùng OpenStreetMap (Nominatim + OSRM, miễn phí, không cần khoá)
+const mapsProvider = () => (GOOGLE_MAPS_API_KEY ? 'google' : 'osm')
+app.get('/api/maps/status', wrap(async () => ({ enabled: !!GOOGLE_MAPS_API_KEY, provider: mapsProvider() })))
+
+// Nominatim yêu cầu tối đa 1 yêu cầu / giây và có User-Agent định danh ứng dụng
+let nextOsm = 0
+const osmJson = async (url) => {
+  const start = Math.max(Date.now(), nextOsm)
+  nextOsm = start + 1100
+  if (start > Date.now()) await new Promise((r) => setTimeout(r, start - Date.now()))
+  const r = await fetch(url, { headers: { 'User-Agent': 'debt-management-app/1.0', 'Accept-Language': 'vi' }, signal: AbortSignal.timeout(10000) })
+  if (!r.ok) throw new Error('OpenStreetMap trả lỗi ' + r.status)
+  return r.json()
+}
+const geocodeAddress = async (address) => {
+  if (GOOGLE_MAPS_API_KEY) {
+    return geoResults(await gmJson(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&region=vn&language=vi&key=${GOOGLE_MAPS_API_KEY}`)).map((r) => ({ ...r, source: 'google' }))
+  }
+  // OpenStreetMap thiếu nhiều số nhà / hẻm: nếu không thấy thì bỏ dần phần đầu địa chỉ (số nhà, hẻm...) để tìm đến khu vực gần đúng
+  const parts = address.split(',').map((x) => x.trim()).filter(Boolean)
+  for (let i = 0; i < Math.max(1, parts.length); i++) {
+    const q = parts.slice(i).join(', ')
+    const list = await osmJson(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=vn&accept-language=vi&q=${encodeURIComponent(q)}`)
+    if (list.length) return list.map((r) => ({ address: r.display_name, lat: Number(r.lat), lng: Number(r.lon), source: 'osm', approx: i > 0 }))
+  }
+  return []
+}
 app.get('/api/maps/geocode', wrap(async (req) => {
-  needKey()
   const address = String(req.query.address || '').trim()
   if (address.length < 3) throw new Error('Nhập địa chỉ (ít nhất 3 ký tự)')
-  return geoResults(await gmJson(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&region=vn&language=vi&key=${GOOGLE_MAPS_API_KEY}`))
+  return geocodeAddress(address)
 }))
 app.get('/api/maps/reverse', wrap(async (req) => {
-  needKey()
   const lat = Number(req.query.lat)
   const lng = Number(req.query.lng)
   if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) throw new Error('Toạ độ không hợp lệ')
-  return geoResults(await gmJson(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=vi&key=${GOOGLE_MAPS_API_KEY}`))[0] || null
+  if (GOOGLE_MAPS_API_KEY) return geoResults(await gmJson(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=vi&key=${GOOGLE_MAPS_API_KEY}`))[0] || null
+  const r = await osmJson(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=vi&lat=${lat}&lon=${lng}`)
+  return r?.display_name ? { address: r.display_name, lat, lng } : null
 }))
-// Khoảng cách từ điểm nhận đến điểm giao: theo đường đi (Routes API), dự phòng đường chim bay
+
+// Khoảng cách theo đường ô tô: Google Routes API, dự phòng OSRM, cuối cùng mới là đường chim bay
+const routeGoogle = async (a, b) => {
+  const point = (p) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } })
+  const j = await gmJson('https://routes.googleapis.com/directions/v2:computeRoutes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY, 'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration' },
+    body: JSON.stringify({ origin: point(a), destination: point(b), travelMode: 'DRIVE', regionCode: 'VN', languageCode: 'vi' })
+  })
+  const r = j.routes?.[0]
+  if (!r || r.distanceMeters == null) throw new Error('Google không tìm được đường đi')
+  return { distance_km: Math.round(r.distanceMeters / 10) / 100, duration_min: Math.round(parseInt(r.duration, 10) / 60) || null, provider: 'google' }
+}
+const routeOsrm = async (a, b) => {
+  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=false`, { headers: { 'User-Agent': 'debt-management-app/1.0' }, signal: AbortSignal.timeout(12000) })
+  const j = await r.json().catch(() => ({}))
+  const route = j.routes?.[0]
+  if (!r.ok || j.code !== 'Ok' || !route) throw new Error('OSRM không tìm được đường đi')
+  return { distance_km: Math.round(route.distance / 10) / 100, duration_min: Math.round(route.duration / 60) || null, provider: 'osrm' }
+}
 app.get('/api/maps/route', wrap(async (req) => {
   const [a, b] = ['from', 'to'].map((k) => ({ lat: Number(req.query[k + '_lat']), lng: Number(req.query[k + '_lng']) }))
   for (const p of [a, b]) if (!(Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180)) throw new Error('Toạ độ không hợp lệ')
-  const straight = Math.round(haversineKm(a, b) * 100) / 100
-  if (!GOOGLE_MAPS_API_KEY) return { distance_km: straight, duration_min: null, method: 'straight' }
-  try {
-    const point = (p) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } })
-    const j = await gmJson('https://routes.googleapis.com/directions/v2:computeRoutes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY, 'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration' },
-      body: JSON.stringify({ origin: point(a), destination: point(b), travelMode: 'DRIVE', regionCode: 'VN', languageCode: 'vi' })
-    })
-    const r = j.routes?.[0]
-    if (!r || r.distanceMeters == null) throw new Error('Không tìm được đường đi')
-    return { distance_km: Math.round(r.distanceMeters / 10) / 100, duration_min: Math.round(parseInt(r.duration, 10) / 60) || null, method: 'road' }
-  } catch (e) {
-    return { distance_km: straight, duration_min: null, method: 'straight', warning: e.message }
+  const tries = [...(GOOGLE_MAPS_API_KEY ? [routeGoogle] : []), routeOsrm]
+  const warnings = []
+  for (const fn of tries) {
+    try {
+      return { ...(await fn(a, b)), method: 'road' }
+    } catch (e) {
+      warnings.push(e.message)
+    }
   }
+  return { distance_km: Math.round(haversineKm(a, b) * 100) / 100, duration_min: null, method: 'straight', warning: warnings.join('; ') }
 }))
 // Link rút gọn của Google Maps (maps.app.goo.gl...) -> link đầy đủ có toạ độ. Chỉ cho phép đúng tên miền Google để tránh bị lợi dụng gọi URL tuỳ ý.
 const MAPS_HOSTS = ['maps.app.goo.gl', 'goo.gl', 'google.com', 'www.google.com', 'maps.google.com']
