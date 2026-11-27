@@ -425,15 +425,19 @@ const osmJson = async (url) => {
   if (!r.ok) throw new Error('OpenStreetMap trả lỗi ' + r.status)
   return r.json()
 }
-const geocodeAddress = async (address) => {
+// `bias` = { lat, lng }: ưu tiên kết quả quanh điểm này (khoảng ±0,6 độ ≈ 65 km) để "205 Bà Triệu" ra Huế chứ không phải nơi khác
+const geocodeAddress = async (address, bias) => {
+  const d = 0.6
   if (GOOGLE_MAPS_API_KEY) {
-    return geoResults(await gmJson(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&region=vn&language=vi&key=${GOOGLE_MAPS_API_KEY}`)).map((r) => ({ ...r, source: 'google' }))
+    const b = bias ? `&bounds=${bias.lat - d},${bias.lng - d}|${bias.lat + d},${bias.lng + d}` : ''
+    return geoResults(await gmJson(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&region=vn&language=vi${b}&key=${GOOGLE_MAPS_API_KEY}`)).map((r) => ({ ...r, source: 'google' }))
   }
+  const view = bias ? `&viewbox=${bias.lng - d},${bias.lat + d},${bias.lng + d},${bias.lat - d}&bounded=0` : ''
   // OpenStreetMap thiếu nhiều số nhà / hẻm: nếu không thấy thì bỏ dần phần đầu địa chỉ (số nhà, hẻm...) để tìm đến khu vực gần đúng
   const parts = address.split(',').map((x) => x.trim()).filter(Boolean)
   for (let i = 0; i < Math.max(1, parts.length); i++) {
     const q = parts.slice(i).join(', ')
-    const list = await osmJson(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=vn&accept-language=vi&q=${encodeURIComponent(q)}`)
+    const list = await osmJson(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=vn&accept-language=vi${view}&q=${encodeURIComponent(q)}`)
     if (list.length) return list.map((r) => ({ address: r.display_name, lat: Number(r.lat), lng: Number(r.lon), source: 'osm', approx: i > 0 }))
   }
   return []
@@ -441,7 +445,9 @@ const geocodeAddress = async (address) => {
 app.get('/api/maps/geocode', wrap(async (req) => {
   const address = String(req.query.address || '').trim()
   if (address.length < 3) throw new Error('Nhập địa chỉ (ít nhất 3 ký tự)')
-  return geocodeAddress(address)
+  const lat = Number(req.query.lat)
+  const lng = Number(req.query.lng)
+  return geocodeAddress(address, Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && req.query.lat != null && req.query.lat !== '' ? { lat, lng } : null)
 }))
 app.get('/api/maps/reverse', wrap(async (req) => {
   const lat = Number(req.query.lat)
