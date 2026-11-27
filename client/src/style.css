@@ -102,3 +102,6 @@ label{font-size:13px;color:var(--mut)}
 .pfilters{flex:none;position:relative;z-index:2;padding:10px 12px 2px;background:var(--bg);box-shadow:0 3px 6px -4px rgba(0,0,0,.25)}
 .pfilters>input,.pfilters .fgroup,.pfilters .seg,.pfilters .dfield{margin-top:0}
 .plist{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:10px 12px 90px}
+.chip{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;padding:6px 6px 6px 12px;border-radius:10px;background:#fdf1c8;color:#7a5a00}
+.chip span{overflow-wrap:anywhere}
+.chip button{flex:none;width:30px;height:30px;border:0;border-radius:8px;background:rgba(0,0,0,.08);color:inherit;font-size:14px}
