@@ -274,3 +274,13 @@ header.top h1{font-size:17px}
 [hidden]{display:none!important}
 a.btn{border-radius:10px;background:var(--pri);color:#fff;text-decoration:none}
 a.btn.sec{background:#e5e7eb;color:var(--tx)}
+
+/* Thẻ trong danh sách (Đơn hàng, Vận chuyển, Công nợ, Khách hàng, Thu chi) nhỏ lại còn khoảng 2/3 */
+.plist .item.orow{padding:6px 10px;gap:8px;margin-bottom:5px;border-radius:10px}
+.plist .item.orow .t{font-size:15px;line-height:1.25}
+.plist .item.orow .row>b,.plist .item.orow .row .nw{font-size:14px}
+.plist .item.orow .mut,.plist .item.orow small{font-size:12px;line-height:1.25}
+.plist .item.orow .badge{font-size:10px;padding:1px 6px}
+.cashdot{width:30px;height:30px;font-size:16px}
+.item.sk{padding:6px 10px}
+.sk-av{width:30px;height:30px}

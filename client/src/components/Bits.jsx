@@ -51,7 +51,7 @@ const initials = (name = '') => {
 }
 
 /** Ảnh đại diện tròn bằng chữ cái đầu, màu theo tên (giống avatar mặc định của Facebook). */
-export const Avatar = ({ name, size = 44 }) => {
+export const Avatar = ({ name, size = 30 }) => {
   let h = 0
   for (const c of name || '') h = (h * 31 + c.charCodeAt(0)) >>> 0
   return (
