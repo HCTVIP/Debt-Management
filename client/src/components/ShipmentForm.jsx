@@ -4,6 +4,7 @@ import { useApp } from '../ctx'
 import { useLinks } from '../links'
 import { SHIP_STATUS, dt, money, today } from '../utils'
 import { Lnk } from './Bits.jsx'
+import DateInput from './DateInput.jsx'
 
 /** Thêm / sửa một chuyến xe. Mỗi chuyến thuộc một đơn hàng. */
 export default function ShipmentForm({ shipment, order, close }) {
@@ -67,7 +68,7 @@ export default function ShipmentForm({ shipment, order, close }) {
       <div className="grid2">
         <div>
           <label>Ngày</label>
-          <input type="date" value={f.ship_date} onChange={set('ship_date')} />
+          <DateInput value={f.ship_date} onChange={(v) => setF({ ...f, ship_date: v })} />
         </div>
         <div>
           <label>Trạng thái</label>

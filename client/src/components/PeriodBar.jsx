@@ -1,4 +1,5 @@
 import { useApp } from '../ctx'
+import DateInput from './DateInput.jsx'
 
 const MODES = [['month', 'Tháng'], ['year', 'Năm'], ['range', 'Khoảng ngày']]
 
@@ -12,29 +13,26 @@ export default function PeriodBar() {
     setPeriod(next)
   }
   return (
-    <div>
+    <div className="pbar">
       <div className="seg">
         {MODES.map(([k, l]) => (
           <button key={k} className={p.mode === k ? 'on' : ''} onClick={() => set({ mode: k })}>{l}</button>
         ))}
       </div>
-      {p.mode === 'month' && <input type="month" value={p.month} onChange={(e) => e.target.value && set({ month: e.target.value })} />}
+      {p.mode === 'month' && <DateInput type="month" value={p.month} onChange={(v) => v && set({ month: v })} />}
       {p.mode === 'year' && (
-        <>
-          {/* Chọn một ngày bất kỳ: bộ lọc lấy theo năm của ngày đó */}
-          <input type="date" value={`${p.year}-01-01`} onChange={(e) => e.target.value && set({ year: e.target.value.slice(0, 4) })} />
-          <div className="mut hint">Cả năm {p.year}</div>
-        </>
+        // Chọn một ngày bất kỳ: bộ lọc lấy theo năm của ngày đó
+        <DateInput value={`${p.year}-01-01`} display={`Năm ${p.year}`} onChange={(v) => v && set({ year: v.slice(0, 4) })} />
       )}
       {p.mode === 'range' && (
         <div className="grid2">
           <div>
             <label>Từ ngày</label>
-            <input type="date" value={p.from} onChange={(e) => setRange({ from: e.target.value })} />
+            <DateInput value={p.from} placeholder="Từ ngày" onChange={(v) => setRange({ from: v })} />
           </div>
           <div>
             <label>Đến ngày</label>
-            <input type="date" value={p.to} onChange={(e) => setRange({ to: e.target.value })} />
+            <DateInput value={p.to} placeholder="Đến ngày" onChange={(v) => setRange({ to: v })} />
           </div>
         </div>
       )}

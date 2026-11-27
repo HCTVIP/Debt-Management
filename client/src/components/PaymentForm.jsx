@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../api'
 import { useApp } from '../ctx'
 import { today } from '../utils'
+import DateInput from './DateInput.jsx'
 
 /** Thêm hoặc sửa một lần thanh toán (công nợ) của đơn. */
 export default function PaymentForm({ order, pay, close }) {
@@ -21,7 +22,7 @@ export default function PaymentForm({ order, pay, close }) {
       <label>Số tiền</label>
       <input type="number" inputMode="decimal" min="0" step="any" required value={f.amount} onChange={set('amount')} />
       <label>Ngày</label>
-      <input type="date" value={f.paid_at} onChange={set('paid_at')} />
+      <DateInput value={f.paid_at} onChange={(v) => setF({ ...f, paid_at: v })} />
       <label>Ghi chú</label>
       <input value={f.note} onChange={set('note')} />
       <div className="acts"><button className="btn">Lưu</button></div>
