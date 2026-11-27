@@ -9,7 +9,7 @@ import compression from 'compression'
 import { createClient } from '@supabase/supabase-js'
 import ws from 'ws'
 
-const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET, PORT = 3000 } = process.env
+const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET, APP_USERNAME = 'admin', PORT = 3000 } = process.env
 for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET })) {
   if (!v) {
     console.error(`Thiếu biến môi trường ${k}`)
@@ -21,14 +21,17 @@ const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persi
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 app.disable('x-powered-by')
-app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"] } } }))
+app.set('trust proxy', 1) // chạy sau proxy của Render: lấy đúng IP người dùng để giới hạn đăng nhập sai
+// Ảnh hàng hóa nằm ở Supabase Storage (public) nên cho phép tải ảnh từ domain Supabase
+app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:', new URL(SUPABASE_URL).origin] } } }))
 app.use(compression())
+app.use('/api/products/:id/image', express.json({ limit: '3mb' })) // ảnh base64 đã thu nhỏ ở trình duyệt
 app.use(express.json({ limit: '200kb' }))
 
 // ---- Auth: token = payload.hmac, hạn 7 ngày ----
 const sign = (s) => crypto.createHmac('sha256', TOKEN_SECRET).update(s).digest('base64url')
-const makeToken = () => {
-  const p = Buffer.from(JSON.stringify({ exp: Date.now() + 7 * 864e5 })).toString('base64url')
+const makeToken = (u) => {
+  const p = Buffer.from(JSON.stringify({ u, exp: Date.now() + 7 * 864e5 })).toString('base64url')
   return `${p}.${sign(p)}`
 }
 const safeEq = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
@@ -50,14 +53,18 @@ app.post('/api/login', (req, res) => {
   const f = fails.get(ip) || { n: 0, t: Date.now() }
   if (Date.now() - f.t > 15 * 60e3) Object.assign(f, { n: 0, t: Date.now() })
   if (f.n >= 10) return res.status(429).json({ error: 'Thử lại sau 15 phút' })
+  const user = String(req.body?.username ?? '').trim()
   const pw = String(req.body?.password ?? '')
   const h = (x) => crypto.createHash('sha256').update(x).digest('hex')
-  if (!safeEq(h(pw), h(APP_PASSWORD))) {
+  // so sánh cả hai để không lộ tài khoản hay mật khẩu nào đúng
+  const okUser = safeEq(h(user.toLowerCase()), h(APP_USERNAME.toLowerCase()))
+  const okPw = safeEq(h(pw), h(APP_PASSWORD))
+  if (!(okUser && okPw)) {
     fails.set(ip, { ...f, n: f.n + 1 })
-    return res.status(401).json({ error: 'Sai mật khẩu' })
+    return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' })
   }
   fails.delete(ip)
-  res.json({ token: makeToken() })
+  res.json({ token: makeToken(APP_USERNAME) })
 })
 
 app.get('/healthz', (_q, r) => r.send('ok'))
@@ -81,6 +88,37 @@ const need = (v, msg) => {
 }
 
 // ---- CRUD đối tác / hàng hóa ----
+// ---- Ảnh hàng hóa: Supabase Storage (bucket public), tên file = id hàng hóa, không cần thêm cột ----
+const BUCKET = 'product-images'
+db.storage
+  .createBucket(BUCKET, { public: true, fileSizeLimit: 2 * 1024 * 1024, allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'] })
+  .then(({ error }) => {
+    if (error && !/already exists/i.test(error.message)) console.error('Storage:', error.message)
+  })
+const imageMap = async () => {
+  const { data, error } = await db.storage.from(BUCKET).list('', { limit: 1000 })
+  if (error) return new Map()
+  return new Map(data.filter((f) => f.id).map((f) => [f.name, Date.parse(f.updated_at || f.created_at) || 0]))
+}
+const withImages = async (rows) => {
+  const m = await imageMap()
+  for (const r of Array.isArray(rows) ? rows : [rows]) r.image_url = m.has(r.id) ? `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${r.id}?v=${m.get(r.id)}` : null
+  return rows
+}
+app.put('/api/products/:id/image', wrap(async (req) => {
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data || ''))
+  if (!m) throw new Error('Ảnh không hợp lệ (chỉ JPEG, PNG hoặc WebP)')
+  const buf = Buffer.from(m[2], 'base64')
+  if (buf.length > 2 * 1024 * 1024) throw new Error('Ảnh quá lớn (tối đa 2MB)')
+  ok(await db.from('products').select('id').eq('id', req.params.id).single())
+  const { error } = await db.storage.from(BUCKET).upload(req.params.id, buf, { contentType: m[1], upsert: true, cacheControl: '3600' })
+  if (error) throw new Error(error.message)
+}))
+app.delete('/api/products/:id/image', wrap(async (req) => {
+  const { error } = await db.storage.from(BUCKET).remove([req.params.id])
+  if (error) throw new Error(error.message)
+}))
+
 const crud = (route, table, fields, order, validate) => {
   app.get(`/api/${route}`, wrap(async (req) => {
     let q = db.from(table).select('*').order(order, { ascending: order === 'name' })
@@ -93,9 +131,12 @@ const crud = (route, table, fields, order, validate) => {
       for (const o of os) d.set(o.partner_id, (d.get(o.partner_id) || 0) + Number(o.debt))
       for (const r of rows) r.debt = d.get(r.id) || 0
     }
-    return rows
+    return route === 'products' ? withImages(rows) : rows
   }))
-  app.get(`/api/${route}/:id`, wrap(async (req) => ok(await db.from(table).select('*').eq('id', req.params.id).single())))
+  app.get(`/api/${route}/:id`, wrap(async (req) => {
+    const row = ok(await db.from(table).select('*').eq('id', req.params.id).single())
+    return route === 'products' ? withImages(row) : row
+  }))
   app.post(`/api/${route}`, wrap(async (req) => {
     const b = pick(req.body, fields)
     validate(b)
@@ -109,6 +150,7 @@ const crud = (route, table, fields, order, validate) => {
   app.delete(`/api/${route}/:id`, wrap(async (req) => {
     const { error } = await db.from(table).delete().eq('id', req.params.id)
     if (error) throw new Error(error.code === '23503' ? 'Đã có đơn hàng liên quan, không thể xoá' : error.message)
+    if (route === 'products') await db.storage.from(BUCKET).remove([req.params.id]) // xoá luôn ảnh
   }))
 }
 crud('partners', 'partners', ['name', 'type', 'phone', 'address', 'note'], 'name', (b) => {

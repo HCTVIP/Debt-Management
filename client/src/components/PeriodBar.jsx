@@ -1,8 +1,8 @@
 import { useApp } from '../ctx'
 
-const MODES = [['month', 'Tháng'], ['year', 'Năm'], ['range', 'Khoảng ngày'], ['all', 'Tất cả']]
+const MODES = [['month', 'Tháng'], ['year', 'Năm'], ['range', 'Khoảng ngày']]
 
-/** Bộ lọc kỳ dùng chung: tháng / năm / khoảng ngày / tất cả. */
+/** Bộ lọc kỳ dùng chung: tháng / năm / khoảng ngày. */
 export default function PeriodBar() {
   const { period: p, setPeriod, toast } = useApp()
   const set = (patch) => setPeriod({ ...p, ...patch })
@@ -20,7 +20,11 @@ export default function PeriodBar() {
       </div>
       {p.mode === 'month' && <input type="month" value={p.month} onChange={(e) => e.target.value && set({ month: e.target.value })} />}
       {p.mode === 'year' && (
-        <input type="number" inputMode="numeric" min="2000" max="2100" value={p.year} onChange={(e) => /^[0-9]{4}$/.test(e.target.value) && set({ year: e.target.value })} />
+        <>
+          {/* Chọn một ngày bất kỳ: bộ lọc lấy theo năm của ngày đó */}
+          <input type="date" value={`${p.year}-01-01`} onChange={(e) => e.target.value && set({ year: e.target.value.slice(0, 4) })} />
+          <div className="mut hint">Cả năm {p.year}</div>
+        </>
       )}
       {p.mode === 'range' && (
         <div className="grid2">
