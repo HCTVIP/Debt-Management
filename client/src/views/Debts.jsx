@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import PeriodBar from '../components/PeriodBar.jsx'
-import { Lnk, OrderRow, Status } from '../components/Bits.jsx'
+import { Lnk, OrderRow, Page, Status } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
 import { useLinks } from '../links'
 import { money, periodLabel, periodQS } from '../utils'
@@ -19,11 +20,19 @@ function CustomerDebt({ partnerId, name }) {
 
 export default function Debts() {
   const { period, openSheet } = useApp()
+  const [q, setQ] = useState('')
   const st = useData(['/debts?' + periodQS(period)])
-  const rows = (st.data?.[0] || []).filter((d) => d.type === 'out')
+  const k = q.trim().toLowerCase()
+  const rows = (st.data?.[0] || []).filter((d) => d.type === 'out' && (!k || d.partner_name.toLowerCase().includes(k)))
   return (
-    <>
-      <PeriodBar />
+    <Page
+      filters={
+        <>
+          <input placeholder="Tìm tên khách" value={q} onChange={(e) => setQ(e.target.value)} />
+          <PeriodBar />
+        </>
+      }
+    >
       <Status state={st} />
       {st.data && (
         <>
@@ -43,6 +52,6 @@ export default function Debts() {
           )}
         </>
       )}
-    </>
+    </Page>
   )
 }

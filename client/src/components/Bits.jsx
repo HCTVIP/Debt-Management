@@ -41,3 +41,11 @@ export const OrderRow = ({ o }) => {
     </div>
   )
 }
+
+/** Khung trang: bộ lọc / tìm kiếm cố định ở đầu, chỉ danh sách bên dưới cuộn. */
+export const Page = ({ filters, children }) => (
+  <>
+    <div className="pfilters">{filters}</div>
+    <div className="plist">{children}</div>
+  </>
+)

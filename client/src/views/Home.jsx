@@ -1,5 +1,5 @@
 import PeriodBar from '../components/PeriodBar.jsx'
-import { Status } from '../components/Bits.jsx'
+import { Page, Status } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
 import { useLinks } from '../links'
 import { money, num, periodLabel, periodQS } from '../utils'
@@ -11,8 +11,7 @@ export default function Home() {
   const d = st.data?.[0]
   const label = periodLabel(period)
   return (
-    <>
-      <PeriodBar />
+    <Page filters={<PeriodBar />}>
       <Status state={st} />
       {d && (
         <>
@@ -35,6 +34,6 @@ export default function Home() {
           )}
         </>
       )}
-    </>
+    </Page>
   )
 }

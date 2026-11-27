@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import PeriodBar from '../components/PeriodBar.jsx'
 import OrderForm from '../components/OrderForm.jsx'
-import { Fab, OrderRow, Status } from '../components/Bits.jsx'
+import { Fab, OrderRow, Page, Status } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
 import { money, periodLabel, periodQS, qs } from '../utils'
 
@@ -17,25 +17,30 @@ export default function Orders() {
   const total = list.reduce((s, o) => s + Number(o.total), 0)
   const debt = list.reduce((s, o) => s + Number(o.debt), 0)
   return (
-    <>
-      {/* Tìm kiếm + chọn khách hàng trong một khối; nút Tìm cao bằng ô nhập */}
-      <div className="fgroup">
-        <form
-          className="frow"
-          onSubmit={(e) => {
-            e.preventDefault()
-            setOrd({ q: text.trim() })
-          }}
-        >
-          <input placeholder="Tìm mã đơn / tên khách" value={text} onChange={(e) => setText(e.target.value)} />
-          <button className="btn">Tìm</button>
-        </form>
-        <select value={ord.partner} onChange={(e) => setOrd({ partner: e.target.value })}>
-          <option value="">Tất cả khách hàng</option>
-          {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </div>
-      <PeriodBar />
+    <Page
+      filters={
+        <>
+          {/* Tìm kiếm + chọn khách hàng trong một khối; nút Tìm cao bằng ô nhập */}
+          <div className="fgroup">
+            <form
+              className="frow"
+              onSubmit={(e) => {
+                e.preventDefault()
+                setOrd({ q: text.trim() })
+              }}
+            >
+              <input placeholder="Tìm mã đơn / tên khách" value={text} onChange={(e) => setText(e.target.value)} />
+              <button className="btn">Tìm</button>
+            </form>
+            <select value={ord.partner} onChange={(e) => setOrd({ partner: e.target.value })}>
+              <option value="">Tất cả khách hàng</option>
+              {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <PeriodBar />
+        </>
+      }
+    >
       <Status state={st} />
       {st.data && (
         <>
@@ -47,6 +52,6 @@ export default function Orders() {
         </>
       )}
       <Fab onClick={() => openSheet((close) => <OrderForm close={close} />)} />
-    </>
+    </Page>
   )
 }
