@@ -87,14 +87,19 @@ export const OrderRow = ({ o }) => {
 export function useChunk(list, step = 30) {
   const [n, setN] = useState(step)
   const mark = useRef()
-  useEffect(() => setN(step), [list, step])
+  // Chỉ quay về đợt đầu khi NỘI DUNG danh sách đổi. Không dùng danh tính mảng: danh sách đã lọc là mảng mới ở mỗi lần render,
+  // nếu dùng thì sẽ bị đặt lại về 30 dòng ngay sau khi tải thêm (lỗi chỉ thấy vài chục dòng).
+  const first = list[0]
+  const last = list[list.length - 1]
+  const sig = [list.length, first?.id ?? first?.partner_id ?? '', last?.id ?? last?.partner_id ?? ''].join('|')
+  useEffect(() => setN(step), [sig, step])
   useEffect(() => {
     const el = mark.current
     if (!el || n >= list.length) return
-    const io = new IntersectionObserver((e) => e[0].isIntersecting && setN((x) => x + step), { rootMargin: '300px' })
+    const io = new IntersectionObserver((e) => e[0].isIntersecting && setN((x) => x + step), { rootMargin: '400px' })
     io.observe(el)
     return () => io.disconnect()
-  }, [n, list, step])
+  }, [n, list.length, step])
   return [list.slice(0, n), <div key="mark" ref={mark} style={{ height: 1 }} />]
 }
 
