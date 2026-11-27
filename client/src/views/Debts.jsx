@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import PeriodBar from '../components/PeriodBar.jsx'
+import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
 import { Lnk, OrderRow, Page, Status } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
 import { useLinks } from '../links'
@@ -20,17 +20,16 @@ function CustomerDebt({ partnerId, name }) {
 
 export default function Debts() {
   const { period, openSheet } = useApp()
-  const [q, setQ] = useState('')
+  const dates = useDateDraft()
+  const [text, setText] = useState('') // đang gõ
+  const [q, setQ] = useState('') // đã áp dụng khi bấm Tìm
   const st = useData(['/debts?' + periodQS(period)])
   const k = q.trim().toLowerCase()
   const rows = (st.data?.[0] || []).filter((d) => d.type === 'out' && (!k || d.partner_name.toLowerCase().includes(k)))
   return (
     <Page
       filters={
-        <>
-          <input placeholder="Tìm tên khách" value={q} onChange={(e) => setQ(e.target.value)} />
-          <PeriodBar />
-        </>
+        <FilterBar placeholder="Tìm tên khách" q={text} setQ={setText} dates={dates} onSubmit={() => dates.commit() && setQ(text)} />
       }
     >
       <Status state={st} />

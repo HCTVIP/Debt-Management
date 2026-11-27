@@ -1,34 +1,37 @@
 export const money = (n) => new Intl.NumberFormat('vi-VN').format(Math.round(Number(n) || 0)) + ' ₫'
 export const num = (n) => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(Number(n) || 0)
 export const dt = (d) => (d ? d.split('-').reverse().join('/') : '---')
-export const today = () => new Date().toISOString().slice(0, 10)
+// Ngày theo giờ máy (không dùng UTC để tránh lệch ngày ở Việt Nam)
+const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+export const today = () => iso(new Date())
 
-export const defaultPeriod = () => ({ mode: 'month', month: new Date().toISOString().slice(0, 7), year: String(new Date().getFullYear()), from: '', to: '' })
+/** Kỳ lọc mặc định: từ đầu tháng này đến hôm nay. */
+export const defaultPeriod = () => {
+  const n = new Date()
+  return { from: iso(new Date(n.getFullYear(), n.getMonth(), 1)), to: iso(n) }
+}
 
 export const loadPeriod = () => {
   try {
-    const p = { ...defaultPeriod(), ...JSON.parse(localStorage.getItem('period')) }
-    // Đã bỏ chế độ "Tất cả": người dùng cũ còn lưu 'all' thì chuyển về theo tháng
-    return p.mode === 'all' ? { ...p, mode: 'month' } : p
-
+    const p = JSON.parse(localStorage.getItem('period'))
+    if (!p) return defaultPeriod()
+    if ('from' in p && !('mode' in p)) return { from: p.from || '', to: p.to || '' }
+    // Dữ liệu cũ (chế độ tháng / năm / khoảng ngày) -> quy về từ ngày - đến ngày
+    if (p.mode === 'month' && p.month) {
+      const [y, m] = p.month.split('-').map(Number)
+      return { from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) }
+    }
+    if (p.mode === 'year' && p.year) return { from: p.year + '-01-01', to: p.year + '-12-31' }
+    if (p.mode === 'range') return { from: p.from || '', to: p.to || '' }
+    return defaultPeriod()
   } catch {
     return defaultPeriod()
   }
 }
 
-export const periodQS = (p) => {
-  if (p.mode === 'month') return 'month=' + p.month
-  if (p.mode === 'year') return 'year=' + p.year
-  if (p.mode === 'range') return [p.from && 'from=' + p.from, p.to && 'to=' + p.to].filter(Boolean).join('&')
-  return ''
-}
+export const periodQS = (p) => [p.from && 'from=' + p.from, p.to && 'to=' + p.to].filter(Boolean).join('&')
 
-export const periodLabel = (p) => {
-  if (p.mode === 'month') return 'Tháng ' + p.month.split('-').reverse().join('/')
-  if (p.mode === 'year') return 'Năm ' + p.year
-  if (p.mode === 'range') return `${p.from ? dt(p.from) : '...'} - ${p.to ? dt(p.to) : '...'}`
-  return 'Tất cả'
-}
+export const periodLabel = (p) => (p.from || p.to ? `${p.from ? dt(p.from) : '...'} - ${p.to ? dt(p.to) : '...'}` : 'Tất cả thời gian')
 
 export const qs = (...parts) => parts.filter(Boolean).join('&')
 

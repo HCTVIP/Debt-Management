@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import FilterBar from '../components/FilterBar.jsx'
 import { Fab, Page, Status } from '../components/Bits.jsx'
 import ProductForm from '../components/ProductForm.jsx'
 import { useApp, useData } from '../ctx'
@@ -6,13 +7,14 @@ import { money, num } from '../utils'
 
 export default function Products() {
   const { openSheet } = useApp()
-  const [q, setQ] = useState('')
+  const [text, setText] = useState('') // đang gõ
+  const [q, setQ] = useState('') // đã áp dụng khi bấm Tìm
   const st = useData(['/products'])
   const k = q.trim().toLowerCase()
   const list = (st.data?.[0] || []).filter((p) => !k || p.name.toLowerCase().includes(k))
   const open = (p) => openSheet((close) => <ProductForm product={p} close={close} />)
   return (
-    <Page filters={<input placeholder="Tìm tên hàng hóa" value={q} onChange={(e) => setQ(e.target.value)} />}>
+    <Page filters={<FilterBar placeholder="Tìm tên hàng hóa" q={text} setQ={setText} onSubmit={() => setQ(text)} />}>
       <Status state={st} />
       {st.data && (list.length ? (
         <div className="pgrid">
