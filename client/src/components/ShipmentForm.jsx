@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useApp } from '../ctx'
 import { useLinks } from '../links'
-import { SHIP_STATUS, dt, km, mapsRouteLink, money, straightKm, today } from '../utils'
+import { SHIP_STATUS, dt, km, money, straightKm, today } from '../utils'
 import { Lnk } from './Bits.jsx'
 import DateInput from './DateInput.jsx'
 import LocationField from './LocationField.jsx'
@@ -31,14 +31,11 @@ export default function ShipmentForm({ shipment, order, close }) {
   const [delivery, setDelivery] = useState({ address: s.delivery_address || '', lat: s.delivery_lat, lng: s.delivery_lng })
   const [dist, setDist] = useState({ km: s.distance_km ?? null, min: s.duration_min ?? null, method: s.distance_km != null ? 'saved' : null })
   const [pending, setPending] = useState([])
-  const [mapsEnabled, setMapsEnabled] = useState(false)
+  const [routing, setRouting] = useState(false)
   const [q, setQ] = useState('')
   const [found, setFound] = useState([])
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
 
-  useEffect(() => {
-    api('/maps/status').then((r) => setMapsEnabled(!!r.enabled)).catch(() => {})
-  }, [])
 
   // Chuyến mới: điền sẵn địa chỉ giao theo địa chỉ khách hàng của đơn
   useEffect(() => {
@@ -61,12 +58,23 @@ export default function ShipmentForm({ shipment, order, close }) {
   const changePickup = (v) => (setPickup(v), setDist({ km: null, min: null, method: null }))
   const changeDelivery = (v) => (setDelivery(v), setDist({ km: null, min: null, method: null }))
 
-  const calc = run(async () => {
-    if (!hasLL(pickup) || !hasLL(delivery)) throw new Error('Cần có toạ độ cả điểm nhận và điểm giao. Bấm Tìm ở từng điểm.')
-    const r = await api(`/maps/route?from_lat=${pickup.lat}&from_lng=${pickup.lng}&to_lat=${delivery.lat}&to_lng=${delivery.lng}`)
-    setDist({ km: r.distance_km, min: r.duration_min, method: r.method })
-    if (r.warning) toast('Không lấy được đường đi, dùng đường chim bay: ' + r.warning)
-  })
+  // Có đủ toạ độ hai điểm thì tự tính khoảng cách theo đường ô tô (không phải đường chim bay)
+  useEffect(() => {
+    if (!hasLL(pickup) || !hasLL(delivery)) return
+    let live = true
+    setRouting(true)
+    const t = setTimeout(() => {
+      api(`/maps/route?from_lat=${pickup.lat}&from_lng=${pickup.lng}&to_lat=${delivery.lat}&to_lng=${delivery.lng}`)
+        .then((r) => live && setDist({ km: r.distance_km, min: r.duration_min, method: r.method }))
+        .catch((e) => live && toast(e.message))
+        .finally(() => live && setRouting(false))
+    }, 300)
+    return () => {
+      live = false
+      clearTimeout(t)
+      setRouting(false)
+    }
+  }, [pickup.lat, pickup.lng, delivery.lat, delivery.lng])
 
   const submit = run(async (e) => {
     e.preventDefault()
@@ -105,7 +113,6 @@ export default function ShipmentForm({ shipment, order, close }) {
     reload()
   })
 
-  const canRoute = hasLL(pickup) && hasLL(delivery)
   return (
     <form onSubmit={submit}>
       <h2>{s.id ? 'Sửa chuyến xe' : 'Thêm chuyến xe'}</h2>
@@ -150,20 +157,16 @@ export default function ShipmentForm({ shipment, order, close }) {
         </div>
       </div>
 
-      <LocationField label="Điểm nhận hàng" value={pickup} onChange={changePickup} mapsEnabled={mapsEnabled} />
-      <LocationField label="Điểm giao hàng" value={delivery} onChange={changeDelivery} mapsEnabled={mapsEnabled} />
+      <LocationField label="Điểm nhận hàng" value={pickup} onChange={changePickup} />
+      <LocationField label="Điểm giao hàng" value={delivery} onChange={changeDelivery} />
 
       <div className="distbox">
         <div>
-          <small>Khoảng cách</small>
-          <b>{dist.km != null ? km(dist.km) : '---'}</b>
-          {dist.min != null && <span className="mut"> · {dist.min} phút</span>}
-          {dist.method === 'straight' && <div className="mut hint">Đường chim bay (không phải đường đi)</div>}
-          {dist.method === 'road' && <div className="mut hint">Theo đường đi (Google Maps)</div>}
-        </div>
-        <div className="distbtns">
-          <button type="button" className="btn sec sm" onClick={calc} disabled={!canRoute}>Tính khoảng cách</button>
-          {canRoute && <a className="btn sec sm" href={mapsRouteLink(pickup, delivery)} target="_blank" rel="noreferrer">Chỉ đường</a>}
+          <small>Khoảng cách (theo đường đi)</small>
+          <b>{routing ? 'Đang tính...' : dist.km != null ? km(dist.km) : '---'}</b>
+          {!routing && dist.min != null && <span className="mut"> · {dist.min} phút</span>}
+          {!routing && dist.method === 'straight' && <div className="mut hint">Chưa lấy được đường đi, đang hiện đường chim bay</div>}
+          {!hasLL(pickup) || !hasLL(delivery) ? <div className="mut hint">Tìm cả điểm nhận và điểm giao để tính khoảng cách</div> : null}
         </div>
       </div>
 

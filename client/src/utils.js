@@ -88,12 +88,6 @@ export const straightKm = (a, b) => {
   return Math.round(2 * 6371 * Math.asin(Math.sqrt(h)) * 100) / 100
 }
 
-const place = (p) => (p.lat != null && p.lng != null ? `${p.lat},${p.lng}` : p.address || '')
-/** Link mở Google Maps tại một điểm. */
-export const mapsPlaceLink = (p) => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(place(p))
-/** Link mở Google Maps chỉ đường từ điểm nhận đến điểm giao. */
-export const mapsRouteLink = (a, b) => 'https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=' + encodeURIComponent(place(a)) + '&destination=' + encodeURIComponent(place(b))
-
 export const km = (n) => (n == null || n === '' ? '---' : new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(Number(n)) + ' km')
 
 /** Tên địa điểm trong link Google Maps dạng /maps/place/<tên>/@lat,lng (không có thì null). */

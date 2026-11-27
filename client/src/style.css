@@ -306,3 +306,8 @@ a.btn.sec{background:#e5e7eb;color:var(--tx)}
 /* Nút xuất Excel trên header (Tổng quan) */
 .hexport{flex:none;display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border:0;border-radius:14px;background:rgba(255,255,255,.2);color:#fff;font-size:12px;font-weight:600;white-space:nowrap}
 .hexport:active{background:rgba(255,255,255,.35)}
+
+/* Một ô địa chỉ + nút Tìm cùng hàng */
+.locrow{display:flex;gap:6px;align-items:flex-start}
+.locrow input{flex:1 1 auto;margin-bottom:6px}
+.locrow .btn{flex:none;height:44px;margin-top:4px}

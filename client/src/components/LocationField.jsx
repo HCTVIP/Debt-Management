@@ -1,131 +1,85 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../api'
 import { useApp } from '../ctx'
-import { mapsPlaceLink, parseLatLng, placeNameFromLink } from '../utils'
-
-// Mở Google Maps ở vị trí hiện tại của máy (không chỉ định điểm)
-const MAPS_HERE = 'https://www.google.com/maps/@?api=1&map_action=map'
-const mapsSearch = (q) => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q)
+import { parseLatLng, placeNameFromLink } from '../utils'
 
 /**
- * Chọn một vị trí (điểm nhận / điểm giao) bằng ứng dụng Google Maps:
- *  1. Bấm Tìm hoặc Vị trí hiện tại -> mở Google Maps.
- *  2. Trong Google Maps chọn điểm -> Chia sẻ -> Sao chép liên kết.
- *  3. Quay lại đây: ứng dụng tự đọc liên kết vừa sao chép (hoặc bấm Dán) để lấy địa chỉ và toạ độ.
- * Cũng có thể dán trực tiếp link Google Maps hoặc toạ độ vào ô địa chỉ rồi bấm Tìm.
+ * Chọn một vị trí (điểm nhận / điểm giao) ngay trong ứng dụng, không mở tab mới.
+ * Nhập địa chỉ rồi bấm Tìm (hoặc Enter): máy chủ tìm bằng Google Maps (có khoá API) hoặc OpenStreetMap,
+ * chọn một kết quả để lấy địa chỉ và toạ độ. Cũng có thể dán link Google Maps hoặc toạ độ vào ô rồi bấm Tìm.
  * `value` = { address, lat, lng }.
  */
-export default function LocationField({ label, value, onChange, mapsEnabled }) {
+export default function LocationField({ label, value, onChange }) {
   const { run, toast } = useApp()
-  const [waiting, setWaiting] = useState(false)
-  const lastApplied = useRef('')
+  const [results, setResults] = useState([])
   const has = value.lat != null && value.lng != null && value.lat !== '' && value.lng !== ''
 
-  const reverse = async (lat, lng) => {
-    if (!mapsEnabled) return null
-    try {
-      return (await api(`/maps/reverse?lat=${lat}&lng=${lng}`))?.address || null
-    } catch {
-      return null
-    }
-  }
-
-  // Đọc chữ (link Google Maps, link rút gọn hoặc toạ độ) và áp dụng vào ô này. Trả về true nếu lấy được toạ độ.
-  const applyText = async (raw) => {
-    const text = String(raw || '').trim()
-    if (!text) return false
+  const search = run(async () => {
+    const text = value.address.trim()
+    if (!text) throw new Error('Nhập địa chỉ cần tìm')
+    // 1) Link Google Maps (kể cả link rút gọn) hoặc toạ độ
     let ll = parseLatLng(text)
     let link = text
     if (!ll && /^https:\/\//i.test(text)) {
-      const r = await api('/maps/resolve?url=' + encodeURIComponent(text))
-      link = r.url
+      link = (await api('/maps/resolve?url=' + encodeURIComponent(text))).url
       ll = parseLatLng(link)
+      if (!ll) throw new Error('Link này không có toạ độ')
     }
-    if (!ll) return false
-    const address = placeNameFromLink(link) || (await reverse(ll.lat, ll.lng)) || `Vị trí ${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`
-    lastApplied.current = text
-    onChange({ address, lat: ll.lat, lng: ll.lng })
-    return true
-  }
-
-  const openMaps = (url) => {
-    window.open(url, '_blank', 'noopener')
-    setWaiting(true)
-  }
-
-  // Tìm: link / toạ độ trong ô thì dùng luôn, còn lại mở Google Maps tìm địa chỉ đang nhập
-  const search = run(async () => {
-    const text = value.address.trim()
-    if (text && (await applyText(text))) return
-    openMaps(text ? mapsSearch(text) : MAPS_HERE)
+    if (ll) {
+      const name = placeNameFromLink(link)
+      const rev = name ? null : await api(`/maps/reverse?lat=${ll.lat}&lng=${ll.lng}`).catch(() => null)
+      onChange({ address: name || rev?.address || `Vị trí ${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`, lat: ll.lat, lng: ll.lng })
+      setResults([])
+      return
+    }
+    // 2) Tìm địa chỉ trên bản đồ
+    const list = await api('/maps/geocode?address=' + encodeURIComponent(text))
+    if (!list.length) throw new Error('Không tìm thấy địa chỉ này. Thử ghi thêm phường / quận / thành phố.')
+    if (list.length === 1) {
+      onChange(list[0])
+      setResults([])
+      if (list[0].approx) toast('Chỉ tìm được khu vực gần đúng, chưa có đúng số nhà / hẻm')
+    } else setResults(list)
   })
-
-  // Dán từ bộ nhớ tạm (có thao tác bấm nên điện thoại cho phép đọc)
-  const paste = run(async () => {
-    let text = ''
-    try {
-      text = await navigator.clipboard.readText()
-    } catch {
-      throw new Error('Không đọc được bộ nhớ tạm. Hãy nhấn giữ ô địa chỉ và chọn Dán.')
-    }
-    if (!(await applyText(text))) throw new Error('Chưa thấy liên kết Google Maps trong bộ nhớ tạm. Trong Google Maps hãy Chia sẻ → Sao chép liên kết.')
-    setWaiting(false)
-    toast('Đã lấy vị trí từ Google Maps')
-  })
-
-  // Quay lại từ Google Maps: tự đọc liên kết vừa sao chép (nếu trình duyệt cho phép)
-  useEffect(() => {
-    if (!waiting) return
-    const back = async () => {
-      if (document.visibilityState !== 'visible') return
-      try {
-        const text = await navigator.clipboard.readText()
-        if (text && text.trim() !== lastApplied.current && (await applyText(text))) {
-          setWaiting(false)
-          toast('Đã lấy vị trí từ Google Maps')
-        }
-      } catch {
-        /* chưa được phép đọc bộ nhớ tạm: người dùng bấm Dán */
-      }
-    }
-    document.addEventListener('visibilitychange', back)
-    window.addEventListener('focus', back)
-    return () => {
-      document.removeEventListener('visibilitychange', back)
-      window.removeEventListener('focus', back)
-    }
-  }, [waiting])
 
   return (
     <div className="locfield">
       <label>{label}</label>
-      <input
-        value={value.address}
-        placeholder="Địa chỉ, link Google Maps hoặc toạ độ"
-        onChange={(e) => {
-          // đổi chữ thì toạ độ cũ không còn đúng
-          onChange({ address: e.target.value, lat: null, lng: null })
-        }}
-      />
-      <div className="locbtns">
+      <div className="locrow">
+        <input
+          value={value.address}
+          placeholder="Nhập địa chỉ rồi bấm Tìm"
+          onChange={(e) => {
+            // đổi chữ thì toạ độ cũ không còn đúng
+            onChange({ address: e.target.value, lat: null, lng: null })
+            setResults([])
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault() // không lưu cả chuyến xe khi mới nhập địa chỉ
+              search()
+            }
+          }}
+        />
         <button type="button" className="btn sec sm" onClick={search}>Tìm</button>
-        <button type="button" className="btn sec sm" onClick={() => openMaps(MAPS_HERE)}>Vị trí hiện tại</button>
-        <button type="button" className="btn sec sm" onClick={paste}>Dán</button>
-        {(has || value.address) && (
-          <a className="btn sec sm" href={mapsPlaceLink(value)} target="_blank" rel="noreferrer">Mở Google Maps</a>
-        )}
-        {has && <button type="button" className="btn sec sm" onClick={() => onChange({ ...value, lat: null, lng: null })}>Bỏ toạ độ</button>}
       </div>
-      {waiting && (
-        <div className="waitbox">
-          Đang chờ Google Maps: chọn điểm → <b>Chia sẻ</b> → <b>Sao chép liên kết</b>, rồi quay lại đây. Nếu chưa tự điền, bấm <b>Dán</b>.
-          <button type="button" aria-label="Đóng" onClick={() => setWaiting(false)}>✕</button>
+      {has && <div className="mut hint">Đã có toạ độ: {Number(value.lat).toFixed(5)}, {Number(value.lng).toFixed(5)}</div>}
+      {!has && value.address && results.length === 0 && <div className="mut hint">Chưa có toạ độ. Bấm Tìm.</div>}
+      {results.length > 0 && (
+        <div className="pick">
+          {results.map((r) => (
+            <div
+              key={r.address + r.lat}
+              className="item link"
+              onClick={() => {
+                onChange(r)
+                setResults([])
+              }}
+            >
+              <div className="mut">{r.address}</div>
+            </div>
+          ))}
         </div>
-      )}
-      {has ? (
-        <div className="mut hint">Toạ độ: {Number(value.lat).toFixed(5)}, {Number(value.lng).toFixed(5)}</div>
-      ) : (
-        value.address && !waiting && <div className="mut hint">Chưa có toạ độ. Bấm Tìm để chọn trong Google Maps.</div>
       )}
     </div>
   )
