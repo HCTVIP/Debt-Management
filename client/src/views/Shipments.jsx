@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import PeriodBar from '../components/PeriodBar.jsx'
+import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
 import { Fab, Lnk, Page, Seg, Status } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
 import { useLinks } from '../links'
@@ -8,10 +8,13 @@ import { SHIP_STATUS, dt, money, periodLabel, periodQS, qs } from '../utils'
 export default function Shipments() {
   const { period } = useApp()
   const { openShipment, openOrder, openPartner } = useLinks()
-  const [status, setStatus] = useState('')
-  const [q, setQ] = useState('')
+  const dates = useDateDraft()
+  // Nháp (đang nhập) và đã áp dụng (dùng để gọi API / lọc): chỉ áp dụng khi bấm Tìm
+  const [draft, setDraft] = useState({ q: '', status: '' })
+  const [applied, setApplied] = useState({ q: '', status: '' })
+  const { status } = applied
   const st = useData(['/shipments?' + qs(periodQS(period), status && 'status=' + status)])
-  const k = q.trim().toLowerCase()
+  const k = applied.q.toLowerCase()
   const rows = (st.data?.[0] || []).filter(
     (s) => !k || [s.vehicle, s.driver, s.orders?.code, s.orders?.partners?.name].some((v) => (v || '').toLowerCase().includes(k))
   )
@@ -19,11 +22,15 @@ export default function Shipments() {
   return (
     <Page
       filters={
-        <>
-          <input placeholder="Tìm biển số / tài xế / khách / mã đơn" value={q} onChange={(e) => setQ(e.target.value)} />
-          <Seg value={status} onChange={setStatus} options={[['', 'Tất cả'], ...Object.entries(SHIP_STATUS)]} />
-          <PeriodBar />
-        </>
+        <FilterBar
+          placeholder="Tìm biển số / tài xế / khách / mã đơn"
+          q={draft.q}
+          setQ={(q) => setDraft({ ...draft, q })}
+          dates={dates}
+          onSubmit={() => dates.commit() && setApplied({ q: draft.q.trim(), status: draft.status })}
+        >
+          <Seg value={draft.status} onChange={(s) => setDraft({ ...draft, status: s })} options={[['', 'Tất cả'], ...Object.entries(SHIP_STATUS)]} />
+        </FilterBar>
       }
     >
       <Status state={st} />

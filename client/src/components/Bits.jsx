@@ -8,7 +8,7 @@ export const Fab = ({ onClick }) => <button className="fab" onClick={onClick}>+<
 export const Seg = ({ value, onChange, options }) => (
   <div className="seg">
     {options.map(([k, l]) => (
-      <button key={k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>{l}</button>
+      <button type="button" key={k} className={value === k ? "on" : ""} onClick={() => onChange(k)}>{l}</button>
     ))}
   </div>
 )

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import PeriodBar from '../components/PeriodBar.jsx'
+import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
 import OrderForm from '../components/OrderForm.jsx'
 import { Fab, OrderRow, Page, Status } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
@@ -7,37 +7,32 @@ import { money, periodLabel, periodQS, qs } from '../utils'
 
 export default function Orders() {
   const { period, ord, setOrd, openSheet } = useApp()
+  const dates = useDateDraft()
   const [text, setText] = useState(ord.q)
   useEffect(() => setText(ord.q), [ord.q])
+  // API chỉ được gọi theo bộ lọc đã áp dụng (period, ord), không gọi khi đang gõ
   const st = useData([
     '/orders?' + qs('type=out', periodQS(period), ord.partner && 'partner_id=' + ord.partner, ord.q && 'q=' + encodeURIComponent(ord.q)),
-    '/partners?type=customer'
+    ...(ord.partner ? [{ path: '/partners/' + ord.partner, optional: true }] : [])
   ])
-  const [list, partners] = st.data || [[], []]
+  const [list, partner] = st.data || [[], null]
   const total = list.reduce((s, o) => s + Number(o.total), 0)
   const debt = list.reduce((s, o) => s + Number(o.debt), 0)
+  const submit = () => {
+    if (dates.commit()) setOrd({ q: text.trim() })
+  }
   return (
     <Page
       filters={
         <>
-          {/* Tìm kiếm + chọn khách hàng trong một khối; nút Tìm cao bằng ô nhập */}
-          <div className="fgroup">
-            <form
-              className="frow"
-              onSubmit={(e) => {
-                e.preventDefault()
-                setOrd({ q: text.trim() })
-              }}
-            >
-              <input placeholder="Tìm mã đơn / tên khách" value={text} onChange={(e) => setText(e.target.value)} />
-              <button className="btn">Tìm</button>
-            </form>
-            <select value={ord.partner} onChange={(e) => setOrd({ partner: e.target.value })}>
-              <option value="">Tất cả khách hàng</option>
-              {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <PeriodBar />
+          <FilterBar placeholder="Tìm mã đơn / tên khách" q={text} setQ={setText} dates={dates} onSubmit={submit} />
+          {/* Đang lọc theo một khách (mở từ thông tin khách): bấm ✕ để bỏ lọc */}
+          {ord.partner && (
+            <div className="chip">
+              <span>Khách: <b>{partner?.name || '...'}</b></span>
+              <button type="button" aria-label="Bỏ lọc khách" onClick={() => setOrd({ partner: '' })}>✕</button>
+            </div>
+          )}
         </>
       }
     >
