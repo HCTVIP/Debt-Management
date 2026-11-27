@@ -250,3 +250,13 @@ header.top h1{font-size:17px}
 .tri small{display:block;color:var(--mut);font-size:11px;line-height:1.2;margin-bottom:2px}
 .tri b{font-size:13px;white-space:nowrap}
 .kpis .stat:last-child:nth-child(odd){grid-column:span 2}
+
+/* Thẻ trong danh sách (Đơn hàng, Vận chuyển, Công nợ, Khách hàng, Thu chi) nhỏ lại còn khoảng 2/3 */
+.plist .item.orow{padding:6px 10px;gap:8px;margin-bottom:5px;border-radius:10px}
+.plist .item.orow .t{font-size:15px;line-height:1.25}
+.plist .item.orow .row>b,.plist .item.orow .row .nw{font-size:14px}
+.plist .item.orow .mut,.plist .item.orow small{font-size:12px;line-height:1.25}
+.plist .item.orow .badge{font-size:10px;padding:1px 6px}
+.cashdot{width:30px;height:30px;font-size:16px}
+.item.sk{padding:6px 10px}
+.sk-av{width:30px;height:30px}
