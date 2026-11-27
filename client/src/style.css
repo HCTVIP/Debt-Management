@@ -356,3 +356,9 @@ select.hasx{padding-right:58px}
 .brandimg{flex:none;width:30px;height:30px;border-radius:50%;background:#fff;padding:1px;object-fit:contain}
 .hspacer{flex:1}
 .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* Chiều cao theo vùng nhìn thấy THẬT của trình duyệt di động. "100%" có thể kẹt ở lúc thanh công cụ còn hiện, để lại khoảng trống
+   ở đáy khi thanh đó thu gọn; "dvh" (dynamic viewport height) tự cập nhật khi thanh công cụ thu gọn / hiện lại. */
+@supports (height:100dvh){
+  html,body,#root{height:100dvh}
+}
