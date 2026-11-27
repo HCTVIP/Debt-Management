@@ -7,6 +7,7 @@ import Home from './views/Home.jsx'
 import Orders from './views/Orders.jsx'
 import Debts from './views/Debts.jsx'
 import Products from './views/Products.jsx'
+import DebugBox from './components/DebugBox.jsx'
 import LoadingLayer from './components/LoadingLayer.jsx'
 import Sheet from './components/Sheet.jsx'
 import { IconDownload, IconLogout } from './components/icons.jsx'
@@ -21,6 +22,9 @@ const TABS = [
   ['products', '📦', 'Hàng hóa', Products],
   ['customers', '👥', 'Khách hàng', Customers]
 ]
+
+// Mở địa chỉ có ?debug=1 để hiện hộp chẩn đoán kích thước màn hình
+const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1'
 
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken())
@@ -68,6 +72,8 @@ export default function App() {
     // Chỉ thu nhỏ bố cục theo vùng nhìn thấy khi BÀN PHÍM đang mở (có ô nhập đang chọn và vùng nhìn thấy thấp hơn cửa sổ rõ rệt).
     // Không thì bỏ biến để bố cục dùng 100% như bình thường: trước đây biến có thể kẹt ở giá trị nhỏ trên iPhone và cắt cụt màn hình.
     const sync = () => {
+      // Chiều cao thật của vùng hiển thị: dự phòng khi dvh không cập nhật (thanh công cụ trình duyệt thu gọn / hiện lại)
+      root.setProperty('--app-h', window.innerHeight + 'px')
       const field = isField(document.activeElement)
       const keyboard = field && vv && vv.height < window.innerHeight - 80
       if (keyboard) {
@@ -149,6 +155,7 @@ export default function App() {
       <Ctx.Provider value={ctx}>
         <Login onDone={() => setAuthed(true)} />
         <LoadingLayer />
+        {DEBUG && <DebugBox />}
         {toastMsg && <div className="toast">{toastMsg}</div>}
       </Ctx.Provider>
     )
@@ -198,6 +205,7 @@ export default function App() {
         <Sheet key={s.id} onClose={s.close}>{s.node}</Sheet>
       ))}
       <LoadingLayer />
+      {DEBUG && <DebugBox />}
       {toastMsg && <div className="toast">{toastMsg}</div>}
     </Ctx.Provider>
   )
