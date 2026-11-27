@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, getToken, setToken, setUnauthorizedHandler } from './api'
+import { api, apiDownload, getToken, setToken, setUnauthorizedHandler } from './api'
 import { Ctx } from './ctx'
-import { loadPeriod } from './utils'
+import { loadPeriod, periodQS } from './utils'
 import Login from './views/Login.jsx'
 import Home from './views/Home.jsx'
 import Orders from './views/Orders.jsx'
@@ -9,7 +9,7 @@ import Debts from './views/Debts.jsx'
 import Products from './views/Products.jsx'
 import LoadingLayer from './components/LoadingLayer.jsx'
 import Sheet from './components/Sheet.jsx'
-import { IconLogout } from './components/icons.jsx'
+import { IconDownload, IconLogout } from './components/icons.jsx'
 import Customers from './views/Customers.jsx'
 import Shipments from './views/Shipments.jsx'
 
@@ -39,6 +39,15 @@ export default function App() {
     setSheets([])
   }, [])
   useEffect(() => setUnauthorizedHandler(logout), [logout])
+  // Xuất Excel công nợ theo bộ lọc đang áp dụng ở Tổng quan (mỗi khách hàng một sheet)
+  const exportExcel = async () => {
+    try {
+      await apiDownload('/export/excel?' + periodQS(period))
+      toast('Đã xuất file Excel')
+    } catch (e) {
+      toast(e.message)
+    }
+  }
   // Chỉ nút đăng xuất cần xác nhận; hết phiên (401) thì đăng xuất ngay
   const askLogout = () => {
     if (confirm('Bạn có chắc muốn đăng xuất?')) logout()
@@ -125,6 +134,12 @@ export default function App() {
         <header className="top">
           <div className="brandmark" aria-hidden="true">₫</div>
           <h1>{title}</h1>
+          {tab === 'home' && (
+            <button className="hexport" onClick={exportExcel} aria-label="Xuất Excel theo bộ lọc" title="Xuất Excel theo bộ lọc">
+              <IconDownload />
+              Xuất Excel
+            </button>
+          )}
           <button className="iconbtn" onClick={askLogout} aria-label="Đăng xuất" title="Đăng xuất">
             <IconLogout />
           </button>

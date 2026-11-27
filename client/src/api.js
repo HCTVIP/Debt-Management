@@ -48,3 +48,35 @@ export async function api(path, method = 'GET', body) {
     track(kind, -1)
   }
 }
+
+/** Tải file từ API (Excel...) bằng token đăng nhập rồi cho trình duyệt lưu xuống. Hiện loading như các API ghi. */
+export async function apiDownload(path) {
+  const token = getToken()
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 60000)
+  track('mut', 1)
+  try {
+    let r
+    try {
+      r = await fetch('/api' + path, { headers: token ? { Authorization: 'Bearer ' + token } : {}, signal: ctrl.signal })
+    } catch (e) {
+      throw new Error(e.name === 'AbortError' ? 'Hết thời gian chờ, vui lòng thử lại' : 'Không kết nối được máy chủ')
+    }
+    if (r.status === 401) onUnauthorized()
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}))
+      throw new Error(j.error || 'Lỗi hệ thống')
+    }
+    const name = /filename="?([^";]+)"?/.exec(r.headers.get('content-disposition') || '')?.[1] || 'export.xlsx'
+    const url = URL.createObjectURL(await r.blob())
+    const a = Object.assign(document.createElement('a'), { href: url, download: name })
+    document.body.append(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 15000)
+    return name
+  } finally {
+    clearTimeout(timer)
+    track('mut', -1)
+  }
+}

@@ -302,3 +302,7 @@ a.btn.sec{background:#e5e7eb;color:var(--tx)}
 .waitbox button{position:absolute;top:4px;right:4px;width:24px;height:24px;border:0;border-radius:50%;background:rgba(0,0,0,.08);color:inherit;font-size:11px;padding:0}
 /* Bàn phím mở (vùng nhìn thấy thấp): chừa chỗ cuộn để ô đang nhập nằm giữa, không sát mép bàn phím */
 @media (max-height:520px){.loginwrap{padding-bottom:160px}}
+
+/* Nút xuất Excel trên header (Tổng quan) */
+.hexport{flex:none;display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border:0;border-radius:14px;background:rgba(255,255,255,.2);color:#fff;font-size:12px;font-weight:600;white-space:nowrap}
+.hexport:active{background:rgba(255,255,255,.35)}

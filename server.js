@@ -8,6 +8,7 @@ import helmet from 'helmet'
 import compression from 'compression'
 import { createClient } from '@supabase/supabase-js'
 import ws from 'ws'
+import ExcelJS from 'exceljs'
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET, APP_USERNAME = 'admin', GOOGLE_MAPS_API_KEY, PORT = 3000 } = process.env
 for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET })) {
@@ -478,6 +479,202 @@ app.delete('/api/shipments/:id/proofs/:name', wrap(async (req) => {
   const { error } = await db.storage.from(PROOF_BUCKET).remove([`${req.params.id}/${req.params.name}`])
   if (error) throw new Error(error.message)
 }))
+
+// ---- Xuất Excel theo kỳ: mỗi khách hàng một sheet, bố cục giống file "Công nợ 2026.xlsx" ----
+// Mỗi tháng là một khối: dòng tiêu đề, các dòng hàng, dòng TỔNG. Dòng hàng đầu tiên của tháng mang số liệu công nợ
+// (Nợ đầu kỳ, PS trong kỳ, Thu+VC, Cuối kỳ). Sheet "Tổng hợp" ở đầu liệt kê công nợ mọi khách trong kỳ.
+const XLSX_HEAD = ['Số lượng', 'Sản phẩm', 'Giá', 'VC ngoài', 'Đã thu', 'Thành tiền', 'Xe', 'Nợ đầu kỳ', 'PS trong kỳ', 'Thu+VC', 'Cuối kỳ']
+const GOLD = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD966' } }
+const NUM_FMT = '#,##0'
+const sheetName = (name, used) => {
+  const base = String(name || 'Khách hàng').replace(/[\\/?*[\]:]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31) || 'Khách hàng'
+  let n = base
+  let i = 2
+  while (used.has(n.toLowerCase())) {
+    const suf = ' ' + i++
+    n = base.slice(0, 31 - suf.length) + suf
+  }
+  used.add(n.toLowerCase())
+  return n
+}
+const addDay = (d, k) => new Date(Date.parse(d + 'T00:00:00Z') + k * 864e5).toISOString().slice(0, 10)
+const dmy = (d) => `${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}`
+const monthsBetween = (from, to) => {
+  const out = []
+  let y = Number(from.slice(0, 4))
+  let m = Number(from.slice(5, 7))
+  const endKey = to.slice(0, 7)
+  for (;;) {
+    const key = `${y}-${String(m).padStart(2, '0')}`
+    if (key > endKey) break
+    const first = `${key}-01`
+    const last = addDay(m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`, -1)
+    out.push({ key, m, start: first < from ? from : first, end: last > to ? to : last })
+    if (m === 12) (y++, (m = 1))
+    else m++
+  }
+  return out
+}
+const isOpening = (o) => /^Nợ đầu kỳ/i.test(o.note || '')
+
+app.get('/api/export/excel', async (req, res) => {
+  try {
+    const p = period(req.query)
+    const [orders, items, pays, ships] = await Promise.all([
+      fetchAll(() => db.from('order_summary').select('id, code, partner_id, partner_name, total, order_date, note').eq('type', 'out').order('id')),
+      fetchAll(() => db.from('order_items').select('order_id, qty, price, products(name)').order('id')),
+      fetchAll(() => db.from('payments').select('amount, paid_at, orders!inner(partner_id, type)').eq('orders.type', 'out').order('id')),
+      (async () => {
+        try {
+          return await fetchAll(() => db.from('shipments').select('order_id, vehicle').order('id'))
+        } catch {
+          return []
+        }
+      })()
+    ])
+    const itemsBy = new Map()
+    for (const i of items) itemsBy.set(i.order_id, [...(itemsBy.get(i.order_id) || []), i])
+    const vehBy = new Map()
+    for (const s of ships) if (s.vehicle) vehBy.set(s.order_id, [...new Set([...(vehBy.get(s.order_id) || []), s.vehicle])])
+    const xeOf = (o) => (vehBy.get(o.id) || []).join(', ') || String(o.note || '').replace(/^Xe\s+/i, '') || ''
+
+    const dates = [...orders.map((o) => o.order_date), ...pays.map((x) => x.paid_at)].sort()
+    if (!dates.length) throw new Error('Chưa có dữ liệu để xuất')
+    // Kỳ lọc chưa có đầu / cuối thì lấy theo dữ liệu thật; không để vòng lặp tháng chạy từ năm 1
+    const from = p && p.from > dates[0] ? p.from : dates[0]
+    const lastDate = dates.at(-1)
+    const to = p && addDay(p.to, -1) < lastDate ? addDay(p.to, -1) : lastDate
+    if (from > to) throw new Error('Khoảng ngày không có dữ liệu')
+    const months = monthsBetween(from, to)
+
+    // Gom theo khách
+    const cust = new Map()
+    const get = (id, name) => {
+      if (!cust.has(id)) cust.set(id, { id, name, orders: [], pays: [] })
+      return cust.get(id)
+    }
+    for (const o of orders) get(o.partner_id, o.partner_name).orders.push(o)
+    for (const x of pays) get(x.orders.partner_id, '').pays.push(x)
+    // Số dư (nợ) trước ngày d. Khoản "Nợ đầu kỳ" tính như phát sinh từ trước ngày ghi
+    const eff = (o) => (isOpening(o) ? addDay(o.order_date, -1) : o.order_date)
+    const balBefore = (c, d) => c.orders.filter((o) => eff(o) < d).reduce((s, o) => s + Number(o.total), 0) - c.pays.filter((x) => x.paid_at < d).reduce((s, x) => s + Number(x.amount), 0)
+
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'Quản lý công nợ'
+    const summary = wb.addWorksheet('Tổng hợp')
+    const used = new Set(['tổng hợp'])
+    const rowsSummary = []
+    const sorted = [...cust.values()].filter((c) => c.name).sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+
+    for (const c of sorted) {
+      // Nợ đầu kỳ của cả kỳ: số dư trước kỳ + các khoản "Nợ đầu kỳ" được ghi giữa kỳ (khách bắt đầu theo dõi muộn hơn)
+      const open0 = balBefore(c, from) + c.orders.filter((o) => isOpening(o) && o.order_date > from && o.order_date <= to).reduce((s, o) => s + Number(o.total), 0)
+      let psAll = 0
+      let thuAll = 0
+      const blocks = []
+      for (const mo of months) {
+        const mOrders = c.orders.filter((o) => !isOpening(o) && o.order_date >= mo.start && o.order_date <= mo.end).sort((a, b) => a.order_date.localeCompare(b.order_date) || a.code.localeCompare(b.code))
+        const lines = []
+        for (const o of mOrders) {
+          const its = itemsBy.get(o.id) || []
+          if (!its.length) {
+            lines.push({ date: o.order_date, qty: null, name: o.note || 'Điều chỉnh công nợ', price: null, vc: 0, xe: '', amount: Number(o.total) })
+            continue
+          }
+          const gross = its.reduce((s, i) => s + Number(i.qty) * Number(i.price), 0)
+          const diff = Number(o.total) - gross // phí vận chuyển ngoài hoặc chênh lệch do sửa đơn
+          its.forEach((i, k) => lines.push({ date: o.order_date, qty: Number(i.qty), name: i.products?.name || '', price: Number(i.price), vc: k === 0 && Math.abs(diff) > 0.5 ? diff : 0, xe: k === 0 ? xeOf(o) : '', amount: 0 }))
+        }
+        const thu = c.pays.filter((x) => x.paid_at >= mo.start && x.paid_at <= mo.end).reduce((s, x) => s + Number(x.amount), 0)
+        if (!lines.length && !thu) continue
+        blocks.push({ mo, lines, thu, open: balBefore(c, mo.start) })
+      }
+      if (!blocks.length) {
+        if (Math.abs(open0) > 0.5) rowsSummary.push({ name: c.name, open: open0, ps: 0, thu: 0 })
+        continue
+      }
+      const ws = wb.addWorksheet(sheetName(c.name, used))
+      ws.columns = [{ width: 10 }, { width: 10 }, { width: 18 }, { width: 13 }, { width: 11 }, { width: 13 }, { width: 15 }, { width: 11 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }]
+      for (const b of blocks) {
+        const head = ws.addRow([`Tháng ${b.mo.m}`, ...XLSX_HEAD])
+        head.eachCell((cell) => {
+          cell.font = { bold: true }
+          cell.fill = GOLD
+        })
+        const first = head.number + 1
+        const rows = b.lines.length ? b.lines : [null]
+        let ps = 0
+        rows.forEach((ln, k) => {
+          const r = ws.addRow([])
+          const n = r.number
+          if (ln) {
+            const amount = ln.price == null ? ln.amount : ln.qty * ln.price + ln.vc
+            ps += amount
+            r.getCell(1).value = dmy(ln.date)
+            if (ln.qty != null) r.getCell(2).value = ln.qty
+            r.getCell(3).value = ln.name
+            if (ln.price != null) r.getCell(4).value = ln.price
+            if (ln.vc) r.getCell(5).value = ln.vc
+            r.getCell(7).value = ln.price == null ? amount : { formula: `(B${n}*D${n})+E${n}-F${n}`, result: amount }
+            r.getCell(8).value = ln.xe
+          }
+          if (k === 0) r.getCell(9).value = b.open // Nợ đầu kỳ
+          r.eachCell({ includeEmpty: true }, (cell, col) => {
+            if (col >= 4) cell.numFmt = NUM_FMT
+          })
+        })
+        const last = ws.lastRow.number
+        const r1 = ws.getRow(first)
+        r1.getCell(10).value = { formula: `SUM(G${first}:G${last})`, result: ps }
+        r1.getCell(11).value = b.thu
+        r1.getCell(12).value = { formula: `(I${first}+J${first})-K${first}`, result: b.open + ps - b.thu }
+        for (const col of [9, 10, 11, 12]) r1.getCell(col).numFmt = NUM_FMT
+        const total = ws.addRow(['TỔNG'])
+        ws.mergeCells(`A${total.number}:F${total.number}`)
+        total.getCell(7).value = { formula: `SUM(G${first}:G${last})`, result: ps }
+        total.getCell(7).numFmt = NUM_FMT
+        total.font = { bold: true }
+        ws.addRow([])
+        ws.addRow([])
+        psAll += ps
+        thuAll += b.thu
+      }
+      rowsSummary.push({ name: c.name, open: open0, ps: psAll, thu: thuAll })
+    }
+
+    // Sheet tổng hợp
+    summary.columns = [{ width: 28 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 16 }]
+    const sh = summary.addRow(['Khách hàng', 'Nợ đầu kỳ', 'PS trong kỳ', 'Thu+VC', 'Cuối kỳ'])
+    sh.eachCell((cell) => {
+      cell.font = { bold: true }
+      cell.fill = GOLD
+    })
+    rowsSummary.sort((a, b) => b.open + b.ps - b.thu - (a.open + a.ps - a.thu))
+    for (const r of rowsSummary) {
+      const row = summary.addRow([r.name, r.open, r.ps, r.thu, null])
+      row.getCell(5).value = { formula: `(B${row.number}+C${row.number})-D${row.number}`, result: r.open + r.ps - r.thu }
+      for (const col of [2, 3, 4, 5]) row.getCell(col).numFmt = NUM_FMT
+    }
+    const n1 = 2
+    const n2 = summary.lastRow.number
+    const tr = summary.addRow(['TỔNG'])
+    for (const [col, letter, key] of [[2, 'B', 'open'], [3, 'C', 'ps'], [4, 'D', 'thu']]) {
+      tr.getCell(col).value = { formula: `SUM(${letter}${n1}:${letter}${n2})`, result: rowsSummary.reduce((s, r) => s + r[key], 0) }
+      tr.getCell(col).numFmt = NUM_FMT
+    }
+    tr.getCell(5).value = { formula: `(B${tr.number}+C${tr.number})-D${tr.number}`, result: rowsSummary.reduce((s, r) => s + r.open + r.ps - r.thu, 0) }
+    tr.getCell(5).numFmt = NUM_FMT
+    tr.font = { bold: true }
+    summary.views = [{ state: 'frozen', ySplit: 1 }]
+
+    const buf = await wb.xlsx.writeBuffer()
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="cong-no_${from}_${to}.xlsx"`)
+    res.send(Buffer.from(buf))
+  } catch (e) {
+    res.status(400).json({ error: e.message || 'Không xuất được Excel' })
+  }
+})
 
 // ---- Công nợ theo đối tác + tổng quan ----
 app.get('/api/debts', wrap(async (req) => {
