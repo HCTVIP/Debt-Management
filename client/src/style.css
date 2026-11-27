@@ -170,3 +170,10 @@ button.btn{transition:transform .1s,background .15s}
 /* Thông báo dạng snackbar */
 .toast{border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.3);animation:slideup .2s ease-out}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Icon thanh tab dưới: emoji */
+nav.tabs button .emo{font-size:20px;line-height:1;transition:transform .15s}
+nav.tabs button.on .emo{transform:scale(1.12)}
+/* Hàng ngày có thêm nút Tìm (Tổng quan): bỏ biểu tượng lịch cho vừa một dòng */
+.drow.withbtn .dfield{font-size:14px;white-space:nowrap}
+.drow.withbtn .dfield svg{display:none}
