@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import PeriodBar from '../components/PeriodBar.jsx'
-import { Fab, Lnk, Seg, Status } from '../components/Bits.jsx'
+import { Fab, Lnk, Page, Seg, Status } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
 import { useLinks } from '../links'
 import { SHIP_STATUS, dt, money, periodLabel, periodQS, qs } from '../utils'
@@ -17,10 +17,15 @@ export default function Shipments() {
   )
   const fee = rows.reduce((t, s) => t + Number(s.fee), 0)
   return (
-    <>
-      <input placeholder="Tìm biển số / tài xế / khách / mã đơn" value={q} onChange={(e) => setQ(e.target.value)} />
-      <Seg value={status} onChange={setStatus} options={[['', 'Tất cả'], ...Object.entries(SHIP_STATUS)]} />
-      <PeriodBar />
+    <Page
+      filters={
+        <>
+          <input placeholder="Tìm biển số / tài xế / khách / mã đơn" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Seg value={status} onChange={setStatus} options={[['', 'Tất cả'], ...Object.entries(SHIP_STATUS)]} />
+          <PeriodBar />
+        </>
+      }
+    >
       <Status state={st} />
       {st.data && (
         <>
@@ -49,6 +54,6 @@ export default function Shipments() {
         </>
       )}
       <Fab onClick={() => openShipment()} />
-    </>
+    </Page>
   )
 }
