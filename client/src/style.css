@@ -109,3 +109,64 @@ label{font-size:13px;color:var(--mut)}
 .drow.withbtn{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}
 .drow .dfield{margin:0 0 10px;padding:0 10px;font-size:15px}
 .drow .btn{height:44px;margin-bottom:10px;padding:0 16px}
+
+/* Ảnh hàng hóa hiện toàn bộ (không cắt) */
+.pcard img,.pcard .noimg{object-fit:contain;background:#f6f7f8}
+.imgbox img,.imgbox .noimg{object-fit:contain;background:#f6f7f8;border:1px solid var(--bd)}
+
+/* ===== Giao diện theo kiểu Facebook (giữ tone Long Thọ) ===== */
+:root{--bg:#f0f2f5}
+header.top{gap:10px;padding-bottom:8px}
+header.top h1{flex:1;font-size:22px;font-weight:800;letter-spacing:-.2px;text-align:left}
+.brandmark{flex:none;width:34px;height:34px;border-radius:50%;background:var(--acc);color:var(--dark);font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center}
+.iconbtn{flex:none;width:38px;height:38px;border:0;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;display:flex;align-items:center;justify-content:center;padding:0}
+.iconbtn:active{background:rgba(255,255,255,.35)}
+
+/* Thanh tab dưới: biểu tượng SVG, tab đang chọn tô màu + vạch trên */
+nav.tabs{box-shadow:0 -1px 0 var(--bd)}
+nav.tabs button{position:relative;gap:3px;font-size:10.5px;transition:color .15s}
+nav.tabs button svg{transition:transform .15s}
+nav.tabs button.on svg{transform:scale(1.06)}
+nav.tabs button:active{background:#f5f6f7}
+nav.tabs button.on{box-shadow:none}
+nav.tabs button.on::before{content:"";position:absolute;top:0;left:22%;right:22%;height:3px;border-radius:0 0 3px 3px;background:var(--pri)}
+
+/* Dòng danh sách: avatar bên trái, nội dung bên phải, hiệu ứng khi chạm */
+.item{box-shadow:0 1px 1px rgba(0,0,0,.06);transition:background .12s,transform .12s}
+.item.link:active,.pcard.link:active,.card.link:active{background:#f0f2f5;transform:scale(.992)}
+.orow{display:flex;align-items:center;gap:12px}
+.obody{flex:1 1 auto;min-width:0}
+.obody .row{align-items:baseline}
+.avatar{flex:none;border-radius:50%;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;letter-spacing:.5px}
+button:active.btn{transform:scale(.97)}
+button.btn{transition:transform .1s,background .15s}
+
+/* Skeleton */
+@keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
+.sk{display:flex;align-items:center;gap:12px;box-shadow:none}
+.sk-av,.sk-l{background:linear-gradient(90deg,#e4e6ea 25%,#f1f2f4 37%,#e4e6ea 63%);background-size:400px 100%;animation:shimmer 1.2s infinite linear}
+.sk-av{flex:none;width:44px;height:44px;border-radius:50%}
+.sk-lines{flex:1}
+.sk-l{height:12px;border-radius:6px;margin:4px 0}
+.sk-l.short{width:35%}
+
+/* Kéo xuống để làm mới */
+.ptr{display:flex;align-items:center;justify-content:center;overflow:hidden;transition:height .15s}
+.spin{width:22px;height:22px;border-radius:50%;border:3px solid #d4d6da;border-top-color:var(--pri)}
+@keyframes rot{to{transform:rotate(360deg)}}
+.spin.busy{animation:rot .7s linear infinite}
+
+/* Bottom sheet: trượt lên, có thanh nắm, kéo xuống để đóng */
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+@keyframes slideup{from{transform:translateY(100%)}to{transform:none}}
+.sheet-bg{animation:fadein .18s ease-out}
+.sheet{animation:slideup .22s cubic-bezier(.2,.8,.2,1);transition:transform .18s}
+.sheet-bg.closing{opacity:0;transition:opacity .18s}
+.sheet-bg.closing .sheet{transform:translateY(100%)}
+.grabber{display:flex;justify-content:center;padding:0 0 10px;margin:-6px 0 0;touch-action:none;cursor:grab}
+.grabber span{width:40px;height:5px;border-radius:3px;background:#c9ccd1}
+.sheet{padding-top:10px}
+
+/* Thông báo dạng snackbar */
+.toast{border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.3);animation:slideup .2s ease-out}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

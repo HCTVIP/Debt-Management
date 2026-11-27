@@ -26,10 +26,15 @@ export default function ProductForm({ product, close }) {
     </div>
   )
   const pick = run(async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
+    const input = e.target
+    const file = input.files?.[0]
     if (!file) return
-    setImg({ data: await resizeImage(file), remove: false })
+    try {
+      // Chỉ xoá giá trị input SAU khi đã đọc xong: xoá sớm có thể làm mất file trên iOS Safari
+      setImg({ data: await resizeImage(file), remove: false })
+    } finally {
+      input.value = ''
+    }
   })
   const submit = run(async (e) => {
     e.preventDefault()

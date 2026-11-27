@@ -7,16 +7,18 @@ import Home from './views/Home.jsx'
 import Orders from './views/Orders.jsx'
 import Debts from './views/Debts.jsx'
 import Products from './views/Products.jsx'
+import Sheet from './components/Sheet.jsx'
+import { IconBox, IconHome, IconLogout, IconOrders, IconTruck, IconUsers, IconWallet } from './components/icons.jsx'
 import Customers from './views/Customers.jsx'
 import Shipments from './views/Shipments.jsx'
 
 const TABS = [
-  ['home', '📊', 'Tổng quan', Home],
-  ['orders', '🧾', 'Đơn hàng', Orders],
-  ['shipping', '🚚', 'Vận chuyển', Shipments],
-  ['debts', '💰', 'Công nợ', Debts],
-  ['products', '📦', 'Hàng hóa', Products],
-  ['customers', '👥', 'Khách hàng', Customers]
+  ['home', IconHome, 'Tổng quan', Home],
+  ['orders', IconOrders, 'Đơn hàng', Orders],
+  ['shipping', IconTruck, 'Vận chuyển', Shipments],
+  ['debts', IconWallet, 'Công nợ', Debts],
+  ['products', IconBox, 'Hàng hóa', Products],
+  ['customers', IconUsers, 'Khách hàng', Customers]
 ]
 
 export default function App() {
@@ -93,25 +95,35 @@ export default function App() {
       {/* Header và thanh tab cố định; chỉ vùng <main> cuộn */}
       <div className="app">
         <header className="top">
+          <div className="brandmark" aria-hidden="true">₫</div>
           <h1>{title}</h1>
-          <button className="btn sec sm" onClick={logout}>Thoát</button>
+          <button className="iconbtn" onClick={logout} aria-label="Đăng xuất" title="Đăng xuất">
+            <IconLogout />
+          </button>
         </header>
         <main>
           <View key={tab} />
         </main>
         <nav className="tabs">
-          {TABS.map(([k, icon, label]) => (
-            <button key={k} className={k === tab ? 'on' : ''} onClick={() => setTab(k)}>
-              <span>{icon}</span>
+          {TABS.map(([k, Icon, label]) => (
+            <button
+              key={k}
+              className={k === tab ? 'on' : ''}
+              aria-current={k === tab ? 'page' : undefined}
+              onClick={() => {
+                // Bấm lại tab đang mở: cuộn lên đầu danh sách (giống Facebook)
+                if (k === tab) document.querySelector('.plist')?.scrollTo({ top: 0, behavior: 'smooth' })
+                else setTab(k)
+              }}
+            >
+              <Icon active={k === tab} />
               {label}
             </button>
           ))}
         </nav>
       </div>
       {sheets.map((s) => (
-        <div key={s.id} className="sheet-bg" onClick={(e) => e.target === e.currentTarget && s.close()}>
-          <div className="sheet">{s.node}</div>
-        </div>
+        <Sheet key={s.id} onClose={s.close}>{s.node}</Sheet>
       ))}
       {toastMsg && <div className="toast">{toastMsg}</div>}
     </Ctx.Provider>
