@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { api } from '../api'
 import { useApp } from '../ctx'
 import { createMap } from './mapEngine.js'
+import { Input } from './Fields.jsx'
 
 const HUE = { lat: 16.4637, lng: 107.5909 } // mặc định khi chưa có điểm nào: Huế
 
@@ -88,16 +89,19 @@ export default function MapPicker({ title, initial, near, onPick, onClose }) {
   }, [])
 
   return createPortal(
-    <div className="mapov" role="dialog" aria-label={title}>
+    // Portal vẫn nằm trong cây React của form chuyến xe: sự kiện gửi form / phím Enter sẽ nổi lên form đó và lưu + đóng cả chuyến xe.
+    // Chặn lại ở đây để bấm Tìm trong bản đồ chỉ tìm địa chỉ.
+    <div className="mapov" role="dialog" aria-label={title} onSubmit={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
       <div className="maptop">
         <button type="button" className="mapx" onClick={onClose} aria-label="Đóng">✕</button>
         <form
           onSubmit={(e) => {
             e.preventDefault()
+            e.stopPropagation()
             search()
           }}
         >
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={title + ': nhập địa chỉ rồi bấm Tìm'} />
+          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={title + ': nhập địa chỉ rồi bấm Tìm'} />
           <button className="btn sm" disabled={busy}>Tìm</button>
         </form>
       </div>

@@ -334,3 +334,19 @@ a.btn.sec{background:#e5e7eb;color:var(--tx)}
 .mapbottom .btn:disabled{opacity:.5}
 .mpin{background:none;border:0}
 .mpin span{font-size:28px;line-height:1;display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
+
+/* Nút ✕ xoá nhanh trong ô nhập / danh sách chọn / ô ngày */
+.fw{position:relative;display:block;flex:1 1 auto;min-width:0}
+.fx{position:absolute;transform:translate(-50%,-50%);width:20px;height:20px;border:0;border-radius:50%;background:#c4c7cc;color:#fff;font-size:11px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;z-index:2;cursor:pointer}
+.fx:active{background:#9ca3af}
+input.hasx,textarea.hasx{padding-right:36px}
+select.hasx{padding-right:58px}
+.pwfield input.hasx{padding-right:80px}
+.pfilters .fx{width:18px;height:18px;font-size:10px}
+.pfilters input.hasx{padding-right:30px}
+.line .fx{width:16px;height:16px;font-size:9px}
+.line input.hasx{padding-right:20px}
+.maptop .fx{background:#e5e7eb;color:#6b7280}
+/* ✕ trong ô ngày nằm cạnh biểu tượng lịch, phía trên lớp input trong suốt */
+.dfx{position:relative;transform:none;flex:none;margin-left:auto;margin-right:6px;z-index:3}
+.dfield svg{flex:none}

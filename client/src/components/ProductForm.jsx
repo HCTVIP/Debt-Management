@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { api } from '../api'
 import { useApp } from '../ctx'
 import { resizeImage } from '../utils'
+import { Input } from './Fields.jsx'
 
 export default function ProductForm({ product, close }) {
   const { run, reload } = useApp()
@@ -22,7 +23,7 @@ export default function ProductForm({ product, close }) {
   const num = (k, label) => (
     <div>
       <label>{label}</label>
-      <input type="number" inputMode="decimal" min="0" step="any" value={f[k]} onChange={set(k)} />
+      <Input type="number" inputMode="decimal" min="0" step="any" value={f[k]} onChange={set(k)} />
     </div>
   )
   const pick = run(async (e) => {
@@ -63,11 +64,11 @@ export default function ProductForm({ product, close }) {
         </div>
       </div>
       <label>Tên *</label>
-      <input required value={f.name} onChange={set('name')} />
+      <Input required value={f.name} onChange={set('name')} />
       <div className="grid2">
         <div>
           <label>Đơn vị</label>
-          <input value={f.unit} onChange={set('unit')} />
+          <Input value={f.unit} onChange={set('unit')} />
         </div>
         {num('stock', 'Tồn kho')}
         {num('cost_price', 'Giá vốn')}

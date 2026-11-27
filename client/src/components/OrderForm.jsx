@@ -4,6 +4,7 @@ import { useApp, useData } from '../ctx'
 import { money, today } from '../utils'
 import { Status } from './Bits.jsx'
 import DateInput from './DateInput.jsx'
+import { Input, Select } from './Fields.jsx'
 
 /**
  * Thêm / sửa đơn. Đơn có mặt hàng: sửa từng dòng. Đơn không có mặt hàng (nợ đầu kỳ, điều chỉnh): sửa tổng tiền.
@@ -58,26 +59,26 @@ function Form({ edit, order, type, partners, products, close }) {
     <form onSubmit={submit}>
       <h2>{edit ? 'Sửa đơn ' + order.code : type === 'in' ? 'Nhập hàng' : 'Bán hàng'}</h2>
       <label>{type === 'in' ? 'Nguồn hàng' : 'Khách hàng'}</label>
-      <select value={f.partner_id} onChange={set('partner_id')}>
+      <Select value={f.partner_id} onChange={set('partner_id')}>
         {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
+      </Select>
       <label>Ngày</label>
       <DateInput value={f.order_date} onChange={(v) => setF({ ...f, order_date: v })} />
       {noItems ? (
         <>
           <label>Tổng tiền</label>
-          <input type="number" inputMode="decimal" min="0" value={f.total} onChange={set('total')} />
+          <Input type="number" inputMode="decimal" min="0" value={f.total} onChange={set('total')} />
         </>
       ) : (
         <>
           <label>Mặt hàng (SL · Đơn giá)</label>
           {items.map((it, i) => (
             <div className="line" key={i}>
-              <select value={it.product_id} onChange={(e) => setItem(i, { product_id: e.target.value, price: priceOf(e.target.value) })}>
+              <Select value={it.product_id} onChange={(e) => setItem(i, { product_id: e.target.value, price: priceOf(e.target.value) })}>
                 {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              <input type="number" inputMode="decimal" min="0" step="any" value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })} />
-              <input type="number" inputMode="decimal" min="0" step="any" value={it.price} onChange={(e) => setItem(i, { price: e.target.value })} />
+              </Select>
+              <Input type="number" inputMode="decimal" min="0" step="any" value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })} />
+              <Input type="number" inputMode="decimal" min="0" step="any" value={it.price} onChange={(e) => setItem(i, { price: e.target.value })} />
               <button type="button" className="btn sec sm" style={{ padding: 0 }} onClick={() => items.length > 1 ? setItems(items.filter((_, j) => j !== i)) : toast('Đơn cần ít nhất 1 mặt hàng')}>✕</button>
             </div>
           ))}
@@ -88,11 +89,11 @@ function Form({ edit, order, type, partners, products, close }) {
       {!edit && (
         <>
           <label>Đã thanh toán</label>
-          <input type="number" inputMode="decimal" min="0" value={f.paid} onChange={set('paid')} />
+          <Input type="number" inputMode="decimal" min="0" value={f.paid} onChange={set('paid')} />
         </>
       )}
       <label>Ghi chú</label>
-      <input value={f.note} onChange={set('note')} />
+      <Input value={f.note} onChange={set('note')} />
       <div className="acts"><button className="btn">{edit ? 'Lưu thay đổi' : 'Lưu đơn'}</button></div>
     </form>
   )

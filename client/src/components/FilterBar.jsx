@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApp } from '../ctx'
 import { dt } from '../utils'
 import DateInput from './DateInput.jsx'
+import { Input } from './Fields.jsx'
 
 /**
  * Nháp từ ngày - đến ngày: chỉ áp dụng cho cả ứng dụng (và gọi API) khi bấm Tìm.
@@ -39,7 +40,7 @@ export default function FilterBar({ placeholder, q, setQ, dates, onSubmit, child
       {placeholder && (
         <div className="fgroup">
           <div className="frow">
-            <input placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} />
+            <Input placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} />
             <button className="btn">Tìm</button>
           </div>
         </div>
