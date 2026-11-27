@@ -22,3 +22,9 @@ Dùng `Dockerfile` (Render / Railway / Fly.io): đặt 4 biến môi trường �
 - (Tuỳ chọn) Đặt `GOOGLE_MAPS_API_KEY` để tìm địa chỉ, lấy địa chỉ từ vị trí hiện tại và tính khoảng cách theo đường đi.
   Khoá chỉ dùng ở server (không lộ ra trình duyệt). Cần bật **Geocoding API** và **Routes API**, nên giới hạn khoá theo API.
 - Ảnh xác nhận giao hàng lưu ở Supabase Storage (bucket `delivery-proofs`).
+
+### Bản đồ chọn vị trí trong app
+- Bấm **Tìm** ở điểm nhận / giao: mở bản đồ ngay trong app (không mở tab mới), tìm địa chỉ hoặc chạm lên bản đồ để chọn điểm.
+- Có `GOOGLE_MAPS_BROWSER_KEY` thì hiện bản đồ Google; không có thì hiện bản đồ OpenStreetMap (Leaflet).
+- `GOOGLE_MAPS_API_KEY` (máy chủ) dùng để tìm địa chỉ và tính đường đi; `GOOGLE_MAPS_BROWSER_KEY` (trình duyệt) chỉ để hiện bản đồ Google.
+  Khoá trình duyệt sẽ lộ ra phía người dùng nên phải giới hạn theo tên miền web và chỉ bật Maps JavaScript API.

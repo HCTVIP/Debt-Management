@@ -58,7 +58,13 @@ export default function App() {
     const vv = window.visualViewport
     const root = document.documentElement.style
     const isField = (t) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)
-    const center = (t) => t.scrollIntoView({ block: 'center' })
+    // Chỉ cuộn khi ô đang nhập bị che / ra ngoài vùng nhìn thấy (tránh giật khi giữ phím xoá)
+    const center = (t) => {
+      const top = vv ? vv.offsetTop : 0
+      const h = vv ? vv.height : window.innerHeight
+      const r = t.getBoundingClientRect()
+      if (r.top - top < 8 || r.bottom - top > h - 8) t.scrollIntoView({ block: 'center' })
+    }
     const sync = () => {
       root.setProperty('--vvh', (vv ? vv.height : window.innerHeight) + 'px')
       root.setProperty('--vvt', (vv ? vv.offsetTop : 0) + 'px')

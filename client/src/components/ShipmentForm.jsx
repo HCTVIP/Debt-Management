@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { useApp } from '../ctx'
 import { useLinks } from '../links'
@@ -55,8 +55,10 @@ export default function ShipmentForm({ shipment, order, close }) {
   }, [q, ord])
 
   // Đổi điểm nhận / giao thì khoảng cách cũ không còn đúng
-  const changePickup = (v) => (setPickup(v), setDist({ km: null, min: null, method: null }))
-  const changeDelivery = (v) => (setDelivery(v), setDist({ km: null, min: null, method: null }))
+  // Hàm ổn định + không tạo state mới khi khoảng cách đã trống: gõ / giữ phím xoá không làm cả form vẽ lại thừa
+  const clearDist = useCallback((d) => (d.km == null && d.min == null && !d.method ? d : { km: null, min: null, method: null }), [])
+  const changePickup = useCallback((v) => (setPickup(v), setDist(clearDist)), [clearDist])
+  const changeDelivery = useCallback((v) => (setDelivery(v), setDist(clearDist)), [clearDist])
 
   // Có đủ toạ độ hai điểm thì tự tính khoảng cách theo đường ô tô (không phải đường chim bay)
   useEffect(() => {
@@ -157,16 +159,21 @@ export default function ShipmentForm({ shipment, order, close }) {
         </div>
       </div>
 
-      <LocationField label="Điểm nhận hàng" value={pickup} onChange={changePickup} />
-      <LocationField label="Điểm giao hàng" value={delivery} onChange={changeDelivery} />
+      <LocationField label="Điểm nhận hàng" value={pickup} onChange={changePickup} near={hasLL(delivery) ? delivery : null} />
+      <LocationField label="Điểm giao hàng" value={delivery} onChange={changeDelivery} near={hasLL(pickup) ? pickup : null} />
 
       <div className="distbox">
         <div>
           <small>Khoảng cách (theo đường đi)</small>
           <b>{routing ? 'Đang tính...' : dist.km != null ? km(dist.km) : '---'}</b>
           {!routing && dist.min != null && <span className="mut"> · {dist.min} phút</span>}
-          {!routing && dist.method === 'straight' && <div className="mut hint">Chưa lấy được đường đi, đang hiện đường chim bay</div>}
-          {!hasLL(pickup) || !hasLL(delivery) ? <div className="mut hint">Tìm cả điểm nhận và điểm giao để tính khoảng cách</div> : null}
+          <div className="mut hint locinfo">
+            {!hasLL(pickup) || !hasLL(delivery)
+              ? 'Chọn cả điểm nhận và điểm giao để tính khoảng cách'
+              : !routing && dist.method === 'straight'
+                ? 'Chưa lấy được đường đi, đang hiện đường chim bay'
+                : '\u00a0'}
+          </div>
         </div>
       </div>
 
