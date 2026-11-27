@@ -24,7 +24,8 @@ export default function DebugBox() {
         safeBottom: p ? Math.round(p.querySelector('.b').getBoundingClientRect().height) : '-',
         root: px('#root'),
         app: px('.app'),
-        appVar: getComputedStyle(document.documentElement).getPropertyValue('--app-h') || '(chưa đặt)',
+        scrollY: Math.round(window.scrollY),
+        kb: document.documentElement.classList.contains('kb') ? 'có' : 'không',
         vvhVar: getComputedStyle(document.documentElement).getPropertyValue('--vvh') || '(không)'
       })
     }
