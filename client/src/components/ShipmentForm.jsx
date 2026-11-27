@@ -152,7 +152,6 @@ export default function ShipmentForm({ shipment, order, close }) {
 
       <LocationField label="Điểm nhận hàng" value={pickup} onChange={changePickup} mapsEnabled={mapsEnabled} />
       <LocationField label="Điểm giao hàng" value={delivery} onChange={changeDelivery} mapsEnabled={mapsEnabled} />
-      {!mapsEnabled && <div className="mut hint">Chưa bật tìm địa chỉ bằng Google Maps (cần GOOGLE_MAPS_API_KEY). Vẫn dán được link Google Maps hoặc toạ độ.</div>}
 
       <div className="distbox">
         <div>

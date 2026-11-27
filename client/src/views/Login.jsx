@@ -2,9 +2,18 @@ import { useState } from 'react'
 import { api, setToken } from '../api'
 import { useApp } from '../ctx'
 
+const EyeIcon = ({ off }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+    {off && <path d="M4 4l16 16" />}
+  </svg>
+)
+
 export default function Login({ onDone }) {
   const { run } = useApp()
   const [f, setF] = useState({ username: '', password: '' })
+  const [show, setShow] = useState(false)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const submit = run(async (e) => {
     e.preventDefault()
@@ -24,7 +33,12 @@ export default function Login({ onDone }) {
           <label>Tài khoản</label>
           <input autoComplete="username" autoCapitalize="none" required value={f.username} onChange={set('username')} />
           <label>Mật khẩu</label>
-          <input type="password" autoComplete="current-password" required value={f.password} onChange={set('password')} />
+          <div className="pwfield">
+            <input type={show ? 'text' : 'password'} autoComplete="current-password" required value={f.password} onChange={set('password')} />
+            <button type="button" className="eye" aria-label={show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} aria-pressed={show} onClick={() => setShow(!show)}>
+              <EyeIcon off={show} />
+            </button>
+          </div>
           <button className="btn" style={{ width: '100%' }}>Đăng nhập</button>
         </form>
       </div>

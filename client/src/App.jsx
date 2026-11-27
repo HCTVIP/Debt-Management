@@ -39,6 +39,37 @@ export default function App() {
     setSheets([])
   }, [])
   useEffect(() => setUnauthorizedHandler(logout), [logout])
+  // Chỉ nút đăng xuất cần xác nhận; hết phiên (401) thì đăng xuất ngay
+  const askLogout = () => {
+    if (confirm('Bạn có chắc muốn đăng xuất?')) logout()
+  }
+
+  // Bàn phím ảo: theo dõi vùng nhìn thấy thật (visualViewport) để biểu mẫu / sheet không bị bàn phím che
+  useEffect(() => {
+    const vv = window.visualViewport
+    const root = document.documentElement.style
+    const isField = (t) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)
+    const center = (t) => t.scrollIntoView({ block: 'center' })
+    const sync = () => {
+      root.setProperty('--vvh', (vv ? vv.height : window.innerHeight) + 'px')
+      root.setProperty('--vvt', (vv ? vv.offsetTop : 0) + 'px')
+      // Bàn phím vừa mở / đóng khi đang nhập: đưa ô đang nhập vào giữa vùng nhìn thấy
+      if (isField(document.activeElement)) setTimeout(() => center(document.activeElement), 50)
+    }
+    sync()
+    vv?.addEventListener('resize', sync)
+    vv?.addEventListener('scroll', sync)
+    // Khi bấm vào ô nhập, cuộn ô đó vào giữa vùng nhìn thấy (sau khi bàn phím mở)
+    const onFocus = (e) => {
+      if (isField(e.target)) setTimeout(() => center(e.target), 350)
+    }
+    document.addEventListener('focusin', onFocus)
+    return () => {
+      vv?.removeEventListener('resize', sync)
+      vv?.removeEventListener('scroll', sync)
+      document.removeEventListener('focusin', onFocus)
+    }
+  }, [])
 
   const toast = useCallback((m) => {
     setToastMsg(m)
@@ -94,7 +125,7 @@ export default function App() {
         <header className="top">
           <div className="brandmark" aria-hidden="true">₫</div>
           <h1>{title}</h1>
-          <button className="iconbtn" onClick={logout} aria-label="Đăng xuất" title="Đăng xuất">
+          <button className="iconbtn" onClick={askLogout} aria-label="Đăng xuất" title="Đăng xuất">
             <IconLogout />
           </button>
         </header>
