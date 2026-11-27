@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
-import { Avatar, Lnk, OrderRow, Page, Status, useChunk } from '../components/Bits.jsx'
+import { Avatar, Lnk, OrderRow, Page, Seg, Status, useChunk } from '../components/Bits.jsx'
+import Ledger from './Ledger.jsx'
 import { useApp, useData } from '../ctx'
 import { useLinks } from '../links'
 import { money, periodLabel, periodQS } from '../utils'
@@ -18,7 +19,7 @@ function CustomerDebt({ partnerId, name }) {
   )
 }
 
-export default function Debts() {
+function DebtList({ seg }) {
   const { period, openSheet } = useApp()
   const dates = useDateDraft()
   const [text, setText] = useState('') // đang gõ
@@ -30,7 +31,10 @@ export default function Debts() {
   return (
     <Page
       filters={
-        <FilterBar placeholder="Tìm tên khách" q={text} setQ={setText} dates={dates} onSubmit={() => dates.commit() && setQ(text)} />
+        <>
+          {seg}
+          <FilterBar placeholder="Tìm tên khách" q={text} setQ={setText} dates={dates} onSubmit={() => dates.commit() && setQ(text)} />
+        </>
       }
     >
       <Status state={st} />
@@ -60,4 +64,11 @@ export default function Debts() {
       )}
     </Page>
   )
+}
+
+/** Tab Công nợ gồm hai phần: công nợ khách hàng và sổ thu chi. */
+export default function Debts() {
+  const [view, setView] = useState('debts')
+  const seg = <Seg value={view} onChange={setView} options={[['debts', 'Công nợ'], ['cash', 'Thu chi']]} />
+  return view === 'debts' ? <DebtList seg={seg} /> : <Ledger seg={seg} />
 }

@@ -186,3 +186,60 @@ nav.tabs button.on .emo{transform:scale(1.12)}
 .blocker{position:fixed;inset:0;z-index:55;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.35);animation:appear .01s .15s both;cursor:progress}
 .blockbox{display:flex;align-items:center;gap:10px;background:#111;color:#fff;padding:12px 18px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:14px}
 .blockbox .spin{width:20px;height:20px;border-width:3px;border-color:rgba(255,255,255,.3);border-top-color:#fff}
+
+/* ===== Thu nhỏ bộ lọc ~1/2, header thấp hơn, chữ trong danh sách lớn hơn ===== */
+header.top{padding:calc(env(safe-area-inset-top) + 4px) 12px 4px;gap:8px;border-bottom-width:2px}
+header.top h1{font-size:17px}
+.brandmark{width:26px;height:26px;font-size:15px}
+.iconbtn{width:30px;height:30px}
+.iconbtn svg{width:16px;height:16px}
+
+.pfilters{padding:6px 10px 0}
+/* Ô tìm kiếm giữ chữ 16px để iOS không tự phóng to khi bấm vào */
+.pfilters input{height:30px;padding:0 10px;margin:0 0 6px;border-radius:8px}
+.pfilters .fgroup{margin-bottom:6px;border-radius:8px}
+.pfilters .fgroup input{height:30px;margin:0}
+.pfilters .frow .btn{height:30px;padding:0 14px;font-size:13px;border-radius:0}
+.pfilters .seg{margin-bottom:6px;gap:4px}
+.pfilters .seg button{min-height:26px;padding:2px;font-size:12px;border-radius:8px}
+.pfilters .drow{gap:6px}
+.pfilters .dfield{height:28px;margin:0 0 6px;padding:0 8px;border-radius:8px;font-size:12px}
+.pfilters .dfield svg{width:14px;height:14px}
+.pfilters .drow .btn{height:28px;margin:0 0 6px;padding:0 14px;font-size:13px;border-radius:8px}
+.pfilters .drow.withbtn .dfield{font-size:12px}
+.chip{margin:0 0 6px;padding:3px 4px 3px 10px;font-size:12px}
+.chip button{width:22px;height:22px;font-size:11px}
+
+/* Danh sách là nội dung chính: chữ lớn hơn phần còn lại */
+.plist .item .t{font-size:17px}
+.plist .item .row>b,.plist .item .row .nw{font-size:16px}
+.plist .item .mut,.plist .item small{font-size:14px}
+.plist .card.sum{font-size:14px}
+.plist .pinfo .t{font-size:16px}
+.plist .pinfo .mut{font-size:14px}
+
+/* Thu chi */
+.cashsum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;text-align:center}
+.cashsum small{display:block;color:var(--mut);font-size:12px}
+.cashsum b{font-size:15px;overflow-wrap:anywhere}
+.cashdot{flex:none;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff}
+.cashdot.in{background:var(--grn)}
+.cashdot.out{background:var(--red)}
+.warnbox{background:#fff7e0;color:#7a5a00;font-size:13px}
+
+/* Biểu đồ tổng quan */
+.ctitle{margin:0 0 8px;font-size:14px;color:var(--tx)}
+.kpis .stat b{font-size:16px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px;font-size:12px;color:var(--mut)}
+.legend i,.dlist i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:baseline}
+.donut{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.dlist{flex:1;min-width:140px}
+.dlist>div{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd);font-size:14px}
+.dlist>div:last-child{border-bottom:0}
+.hb{margin-bottom:10px}
+.hb-top{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:14px}
+.hb-name{overflow-wrap:anywhere}
+.hb-name em{font-style:normal;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#eef0f2;font-size:11px;margin-right:6px;color:var(--mut)}
+.hb-track{height:8px;border-radius:4px;background:#eef0f2;overflow:hidden}
+.hb-track div{height:100%;border-radius:4px}
+.cashsum b{font-size:13px;white-space:nowrap}

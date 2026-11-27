@@ -354,16 +354,117 @@ app.get('/api/debts', wrap(async (req) => {
   }
   return [...m.values()].sort((a, b) => b.debt - a.debt)
 }))
+// ---- Thu chi: khoản thu khác / chi (bảng cashflow). Khoản thu từ khách lấy từ bảng thanh toán ----
+const CASH_KINDS = ['in', 'out']
+const cashErr = (e) =>
+  /cashflow/.test(e.message || '') && /(does not exist|schema cache)/.test(e.message || '')
+    ? new Error('Chưa tạo bảng thu chi: chạy supabase/003_cashflow.sql trong Supabase SQL Editor')
+    : e
+const cashBody = (b) => {
+  if (!CASH_KINDS.includes(b.kind)) throw new Error('Chọn thu hoặc chi')
+  const amount = Number(b.amount)
+  if (!(amount > 0)) throw new Error('Số tiền không hợp lệ')
+  return { kind: b.kind, amount, entry_date: b.entry_date || undefined, category: String(b.category || '').trim() || null, note: String(b.note || '').trim() || null }
+}
+app.post('/api/cashflow', wrap(async (req) => {
+  try {
+    return ok(await db.from('cashflow').insert(cashBody(req.body)).select().single())
+  } catch (e) {
+    throw cashErr(e)
+  }
+}))
+app.put('/api/cashflow/:id', wrap(async (req) => {
+  try {
+    return ok(await db.from('cashflow').update(cashBody(req.body)).eq('id', req.params.id).select().single())
+  } catch (e) {
+    throw cashErr(e)
+  }
+}))
+app.delete('/api/cashflow/:id', wrap(async (req) => {
+  try {
+    ok(await db.from('cashflow').delete().eq('id', req.params.id))
+  } catch (e) {
+    throw cashErr(e)
+  }
+}))
+// Sổ thu chi theo kỳ: thanh toán của khách (thu) + khoản thu khác + chi, mới nhất trước
+app.get('/api/ledger', wrap(async (req) => {
+  const per = period(req.query)
+  const pays = await fetchAll(() => inPeriod(db.from('payments').select('id, amount, paid_at, note, orders(id, code, partner_id, partners(name))').order('id'), per, 'paid_at'))
+  let cash = []
+  let cashReady = true
+  try {
+    cash = await fetchAll(() => inPeriod(db.from('cashflow').select('*').order('id'), per, 'entry_date'))
+  } catch (e) {
+    if (!cashErr(e) || cashErr(e) === e) throw e
+    cashReady = false
+  }
+  const items = [
+    ...pays.map((p) => ({ id: p.id, source: 'payment', kind: 'in', date: p.paid_at, amount: Number(p.amount), title: p.orders?.partners?.name || 'Khách hàng', sub: p.orders?.code || '', note: p.note, order_id: p.orders?.id, partner_id: p.orders?.partner_id })),
+    ...cash.map((c) => ({ id: c.id, source: 'cashflow', kind: c.kind, date: c.entry_date, amount: Number(c.amount), title: c.category || (c.kind === 'in' ? 'Thu khác' : 'Chi'), sub: '', note: c.note, category: c.category }))
+  ].sort((a, b) => b.date.localeCompare(a.date))
+  const sum = (k) => items.filter((i) => i.kind === k).reduce((s, i) => s + i.amount, 0)
+  return { items, totals: { in: sum('in'), out: sum('out'), balance: sum('in') - sum('out') }, cashflow_ready: cashReady }
+}))
+
+// ---- Tổng quan: số liệu + dữ liệu vẽ biểu đồ theo kỳ ----
 app.get('/api/dashboard', wrap(async (req) => {
   const per = period(req.query)
-  const [o, pays, prods] = await Promise.all([
-    fetchAll(() => inPeriod(db.from('order_summary').select('type, total, debt').order('code'), per)),
-    fetchAll(() => inPeriod(db.from('payments').select('amount, orders!inner(type)').order('id'), per, 'paid_at')),
+  const optional = async (fn) => {
+    try {
+      return await fn()
+    } catch {
+      return []
+    }
+  }
+  const [o, pays, items, cash, prods] = await Promise.all([
+    fetchAll(() => inPeriod(db.from('order_summary').select('partner_id, partner_name, type, total, paid, debt, order_date').order('code'), per)),
+    fetchAll(() => inPeriod(db.from('payments').select('amount, paid_at, orders!inner(type)').order('id'), per, 'paid_at')),
+    fetchAll(() => {
+      let q = db.from('order_items').select('qty, price, products(name), orders!inner(order_date, type)').order('id')
+      if (per) q = q.gte('orders.order_date', per.from).lt('orders.order_date', per.to)
+      return q
+    }),
+    optional(() => fetchAll(() => inPeriod(db.from('cashflow').select('kind, amount, entry_date').order('id'), per, 'entry_date'))),
     db.from('products').select('id, name, unit, stock, min_stock, cost_price')
   ])
   const p = ok(prods)
   const by = (t, f) => o.filter((x) => x.type === t).reduce((s, x) => s + Number(x[f]), 0)
   const paid = (t) => pays.filter((x) => x.orders?.type === t).reduce((s, x) => s + Number(x.amount), 0)
+  const cashSum = (k) => cash.filter((c) => c.kind === k).reduce((s, c) => s + Number(c.amount), 0)
+
+  // Chuỗi thời gian: theo ngày nếu kỳ <= 45 ngày, ngược lại theo tháng
+  const dates = [...o.map((x) => x.order_date), ...pays.map((x) => x.paid_at), ...cash.map((x) => x.entry_date)].sort()
+  const first = per ? per.from : dates[0]
+  const lastEx = per ? per.to : dates.at(-1)
+  const spanDays = first && lastEx ? (Date.parse(lastEx) - Date.parse(first)) / 864e5 : 0
+  const monthly = spanDays > 45
+  const keyOf = (d) => (monthly ? d.slice(0, 7) : d)
+  const series = new Map()
+  const slot = (d) => {
+    const k = keyOf(d)
+    if (!series.has(k)) series.set(k, { key: k, sold: 0, collected: 0, spent: 0 })
+    return series.get(k)
+  }
+  for (const x of o) if (x.type === 'out') slot(x.order_date).sold += Number(x.total)
+  for (const x of pays) if (x.orders?.type === 'out') slot(x.paid_at).collected += Number(x.amount)
+  for (const x of cash) if (x.kind === 'out') slot(x.entry_date).spent += Number(x.amount)
+
+  const top = (map, n = 5) => [...map.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.value - a.value).slice(0, n)
+  const cust = new Map()
+  for (const x of o.filter((x) => x.type === 'out')) {
+    const c = cust.get(x.partner_name) || { value: 0, debt: 0 }
+    c.value += Number(x.total)
+    c.debt += Number(x.debt)
+    cust.set(x.partner_name, c)
+  }
+  const prod = new Map()
+  for (const x of items.filter((x) => x.orders?.type === 'out')) {
+    const k = x.products?.name || '---'
+    const c = prod.get(k) || { value: 0 }
+    c.value += Number(x.qty) * Number(x.price)
+    prod.set(k, c)
+  }
   return {
     payable: by('in', 'debt'),
     receivable: by('out', 'debt'),
@@ -371,8 +472,14 @@ app.get('/api/dashboard', wrap(async (req) => {
     sold: by('out', 'total'),
     collected: paid('out'),
     paid_out: paid('in'),
+    other_in: cashSum('in'),
+    spent: cashSum('out'),
     stock_value: p.reduce((s, x) => s + Number(x.stock) * Number(x.cost_price), 0),
-    low_stock: p.filter((x) => Number(x.stock) <= Number(x.min_stock))
+    low_stock: p.filter((x) => Number(x.stock) <= Number(x.min_stock)),
+    group: monthly ? 'month' : 'day',
+    series: [...series.values()].sort((a, b) => a.key.localeCompare(b.key)),
+    top_customers: top(cust),
+    top_products: top(prod)
   }
 }))
 

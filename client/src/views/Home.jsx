@@ -1,39 +1,61 @@
 import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
 import { Page, Status } from '../components/Bits.jsx'
+import { BarChart, Donut, HBar, short } from '../components/Charts.jsx'
 import { useApp, useData } from '../ctx'
-import { useLinks } from '../links'
-import { money, num, periodLabel, periodQS } from '../utils'
+import { money, periodLabel, periodQS } from '../utils'
 
+/** Tổng quan: chỉ xem (biểu đồ + số liệu), không có thao tác thêm / sửa. */
 export default function Home() {
-  const { period, goTab } = useApp()
-  const { openProduct } = useLinks()
+  const { period } = useApp()
   const dates = useDateDraft()
   const st = useData(['/dashboard?' + periodQS(period)])
   const d = st.data?.[0]
-  const label = periodLabel(period)
+  const hasSpent = d && d.spent > 0
+  const bars = [
+    { key: 'sold', label: 'Bán hàng', color: '#c4161c' },
+    { key: 'collected', label: 'Đã thu', color: '#16a34a' },
+    ...(hasSpent ? [{ key: 'spent', label: 'Chi', color: '#eeb919' }] : [])
+  ]
+  const paid = d ? Math.max(0, d.sold - d.receivable) : 0
   return (
     <Page filters={<FilterBar dates={dates} onSubmit={dates.commit} />}>
       <Status state={st} />
       {d && (
         <>
-          <div className="grid2">
-            <div className="card stat link" onClick={() => goTab('debts')}><small>Khách nợ</small><b className="red">{money(d.receivable)}</b></div>
-            <div className="card stat link" onClick={() => goTab('orders')}><small>Bán hàng</small><b>{money(d.sold)}</b></div>
+          <div className="mut hint">Số liệu: {periodLabel(period)}</div>
+          <div className="grid2 kpis">
+            <div className="card stat"><small>Bán hàng</small><b>{money(d.sold)}</b></div>
             <div className="card stat"><small>Đã thu từ khách</small><b className="grn">{money(d.collected)}</b></div>
-            <div className="card stat link" onClick={() => goTab('products')}><small>Giá trị tồn kho (giá vốn)</small><b>{money(d.stock_value)}</b></div>
+            <div className="card stat"><small>Khách còn nợ</small><b className="red">{money(d.receivable)}</b></div>
+            <div className="card stat"><small>Chi</small><b>{money(d.spent)}</b></div>
           </div>
-          <div className="mut hint">Số liệu: {label}</div>
-          <h3>Sắp hết hàng</h3>
-          {d.low_stock.length ? (
-            d.low_stock.map((p) => (
-              <div className="item row link" key={p.id} onClick={() => openProduct(p.id)}>
-                <span className="t">{p.name}</span>
-                <span className="badge warn nw">{num(p.stock)} {p.unit}</span>
-              </div>
-            ))
-          ) : (
-            <div className="empty">Không có</div>
-          )}
+
+          <div className="card">
+            <h3 className="ctitle">Bán hàng và thu tiền theo {d.group === 'month' ? 'tháng' : 'ngày'}</h3>
+            {d.series.length ? <BarChart data={d.series} series={bars} group={d.group} /> : <div className="empty">Chưa có dữ liệu</div>}
+          </div>
+
+          <div className="card">
+            <h3 className="ctitle">Tỷ lệ thu tiền của các đơn trong kỳ</h3>
+            <Donut
+              parts={[
+                { label: 'Đã thu', value: paid, color: '#16a34a' },
+                { label: 'Còn nợ', value: d.receivable, color: '#c4161c' }
+              ]}
+              center={d.sold > 0 ? Math.round((paid / d.sold) * 100) + '%' : '0%'}
+              sub={'của ' + short(d.sold)}
+            />
+          </div>
+
+          <div className="card">
+            <h3 className="ctitle">Top 5 khách hàng (doanh số)</h3>
+            <HBar rows={d.top_customers} />
+          </div>
+
+          <div className="card">
+            <h3 className="ctitle">Top 5 hàng hóa (doanh thu)</h3>
+            <HBar rows={d.top_products} color="#eeb919" />
+          </div>
         </>
       )}
     </Page>
