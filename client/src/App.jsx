@@ -65,15 +65,31 @@ export default function App() {
       const r = t.getBoundingClientRect()
       if (r.top - top < 8 || r.bottom - top > h - 8) t.scrollIntoView({ block: 'center' })
     }
+    // Chỉ thu nhỏ bố cục theo vùng nhìn thấy khi BÀN PHÍM đang mở (có ô nhập đang chọn và vùng nhìn thấy thấp hơn cửa sổ rõ rệt).
+    // Không thì bỏ biến để bố cục dùng 100% như bình thường: trước đây biến có thể kẹt ở giá trị nhỏ trên iPhone và cắt cụt màn hình.
     const sync = () => {
-      root.setProperty('--vvh', (vv ? vv.height : window.innerHeight) + 'px')
-      root.setProperty('--vvt', (vv ? vv.offsetTop : 0) + 'px')
-      // Bàn phím vừa mở / đóng khi đang nhập: đưa ô đang nhập vào giữa vùng nhìn thấy
-      if (isField(document.activeElement)) setTimeout(() => center(document.activeElement), 50)
+      const field = isField(document.activeElement)
+      const keyboard = field && vv && vv.height < window.innerHeight - 80
+      if (keyboard) {
+        root.setProperty('--vvh', vv.height + 'px')
+        root.setProperty('--vvt', vv.offsetTop + 'px')
+        // Bàn phím vừa mở / đóng khi đang nhập: đưa ô đang nhập vào giữa vùng nhìn thấy
+        setTimeout(() => center(document.activeElement), 50)
+      } else {
+        root.removeProperty('--vvh')
+        root.removeProperty('--vvt')
+      }
     }
     sync()
     vv?.addEventListener('resize', sync)
     vv?.addEventListener('scroll', sync)
+    window.addEventListener('resize', sync)
+    window.addEventListener('orientationchange', sync)
+    window.addEventListener('pageshow', sync)
+    document.addEventListener('visibilitychange', sync)
+    // Rời ô nhập (bàn phím đóng): đặt lại bố cục sau khi trình duyệt cập nhật kích thước
+    const onBlur = () => setTimeout(sync, 250)
+    document.addEventListener('focusout', onBlur)
     // Khi bấm vào ô nhập, cuộn ô đó vào giữa vùng nhìn thấy (sau khi bàn phím mở)
     const onFocus = (e) => {
       if (isField(e.target)) setTimeout(() => center(e.target), 350)
@@ -82,6 +98,11 @@ export default function App() {
     return () => {
       vv?.removeEventListener('resize', sync)
       vv?.removeEventListener('scroll', sync)
+      window.removeEventListener('resize', sync)
+      window.removeEventListener('orientationchange', sync)
+      window.removeEventListener('pageshow', sync)
+      document.removeEventListener('visibilitychange', sync)
+      document.removeEventListener('focusout', onBlur)
       document.removeEventListener('focusin', onFocus)
     }
   }, [])
