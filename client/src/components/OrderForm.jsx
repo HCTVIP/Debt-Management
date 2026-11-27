@@ -3,6 +3,7 @@ import { api } from '../api'
 import { useApp, useData } from '../ctx'
 import { money, today } from '../utils'
 import { Status } from './Bits.jsx'
+import DateInput from './DateInput.jsx'
 
 /**
  * Thêm / sửa đơn. Đơn có mặt hàng: sửa từng dòng. Đơn không có mặt hàng (nợ đầu kỳ, điều chỉnh): sửa tổng tiền.
@@ -61,7 +62,7 @@ function Form({ edit, order, type, partners, products, close }) {
         {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
       <label>Ngày</label>
-      <input type="date" value={f.order_date} onChange={set('order_date')} />
+      <DateInput value={f.order_date} onChange={(v) => setF({ ...f, order_date: v })} />
       {noItems ? (
         <>
           <label>Tổng tiền</label>

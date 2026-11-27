@@ -18,21 +18,23 @@ export default function Orders() {
   const debt = list.reduce((s, o) => s + Number(o.debt), 0)
   return (
     <>
-      <form
-        className="row"
-        style={{ gap: 6 }}
-        onSubmit={(e) => {
-          e.preventDefault()
-          setOrd({ q: text.trim() })
-        }}
-      >
-        <input placeholder="Tìm mã đơn / tên khách" value={text} onChange={(e) => setText(e.target.value)} />
-        <button className="btn sm" style={{ marginBottom: 10 }}>Tìm</button>
-      </form>
-      <select value={ord.partner} onChange={(e) => setOrd({ partner: e.target.value })}>
-        <option value="">Tất cả khách hàng</option>
-        {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
+      {/* Tìm kiếm + chọn khách hàng trong một khối; nút Tìm cao bằng ô nhập */}
+      <div className="fgroup">
+        <form
+          className="frow"
+          onSubmit={(e) => {
+            e.preventDefault()
+            setOrd({ q: text.trim() })
+          }}
+        >
+          <input placeholder="Tìm mã đơn / tên khách" value={text} onChange={(e) => setText(e.target.value)} />
+          <button className="btn">Tìm</button>
+        </form>
+        <select value={ord.partner} onChange={(e) => setOrd({ partner: e.target.value })}>
+          <option value="">Tất cả khách hàng</option>
+          {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div>
       <PeriodBar />
       <Status state={st} />
       {st.data && (

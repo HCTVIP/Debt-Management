@@ -67,3 +67,33 @@ label{font-size:13px;color:var(--mut)}
 .pcard .noimg{display:flex}
 .login{background:#fff;border-radius:16px;padding:22px 20px;box-shadow:0 2px 12px rgba(0,0,0,.08);border-top:4px solid var(--acc);margin-top:14vh}
 .login h1{color:var(--pri);font-size:22px;margin:0 0 14px}
+
+/* Ô chọn ngày / tháng: chữ định dạng Việt Nam, input gốc trong suốt phủ lên để mở bộ chọn của máy */
+.dfield{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;height:44px;margin:4px 0 10px;padding:0 12px;border:1px solid var(--bd);border-radius:10px;background:#fff;font-size:16px;color:var(--tx)}
+.dfield svg{flex:none;color:var(--pri)}
+.dfield .ph{color:#9ca3af}
+.dfield input{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;opacity:0;cursor:pointer}
+.dfield input::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
+.pbar .dfield{margin-top:0}
+
+/* Khối tìm kiếm + chọn khách hàng */
+.fgroup{border:1px solid var(--bd);border-radius:10px;background:#fff;overflow:hidden;margin-bottom:10px}
+.fgroup input,.fgroup select{border:0;border-radius:0;margin:0;height:44px;background-color:#fff}
+.frow{display:flex}
+.frow input{flex:1 1 auto}
+.frow .btn{flex:none;height:44px;border-radius:0;padding:0 18px}
+.fgroup select{border-top:1px solid var(--bd);background-position:right 12px center}
+
+/* Màn đăng nhập */
+.loginwrap{min-height:100%;overflow-y:auto;display:flex;align-items:center;justify-content:center;padding:24px 18px;
+  background:
+    radial-gradient(circle at 15% 12%,rgba(238,185,25,.28) 0,transparent 34%),
+    radial-gradient(circle at 90% 88%,rgba(238,185,25,.2) 0,transparent 38%),
+    repeating-linear-gradient(135deg,rgba(255,255,255,.05) 0 14px,transparent 14px 28px),
+    linear-gradient(160deg,var(--pri),var(--dark))}
+.logincol{width:100%;max-width:360px}
+.brand{text-align:center;color:#fff;margin-bottom:18px}
+.brand .logo{width:64px;height:64px;margin:0 auto 12px;border-radius:18px;background:var(--acc);color:var(--dark);font-size:36px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.brand h1{margin:0;font-size:24px}
+.brand p{margin:6px 0 0;font-size:13px;opacity:.85}
+.login{background:#fff;border-radius:16px;padding:20px 18px;box-shadow:0 10px 30px rgba(0,0,0,.25);border-top:4px solid var(--acc)}
