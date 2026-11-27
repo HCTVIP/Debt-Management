@@ -159,8 +159,10 @@ export default function App() {
       {/* Header và thanh tab cố định; chỉ vùng <main> cuộn */}
       <div className="app">
         <header className="top">
-          <div className="brandmark" aria-hidden="true">₫</div>
-          <h1>{title}</h1>
+          <img className="brandimg" src="/logo-longtho.png" alt="Long Thọ" width="30" height="30" />
+          {/* Không hiện tên tab trên header; vẫn giữ tiêu đề ẩn cho trình đọc màn hình */}
+          <h1 className="sr-only">{title}</h1>
+          <span className="hspacer" />
           {tab === 'home' && (
             <button className="hexport" onClick={exportExcel} aria-label="Xuất Excel theo bộ lọc" title="Xuất Excel theo bộ lọc">
               <IconDownload />
