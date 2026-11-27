@@ -7,6 +7,7 @@ import Home from './views/Home.jsx'
 import Orders from './views/Orders.jsx'
 import Debts from './views/Debts.jsx'
 import Products from './views/Products.jsx'
+import LoadingLayer from './components/LoadingLayer.jsx'
 import Sheet from './components/Sheet.jsx'
 import { IconLogout } from './components/icons.jsx'
 import Customers from './views/Customers.jsx'
@@ -85,6 +86,7 @@ export default function App() {
     return (
       <Ctx.Provider value={ctx}>
         <Login onDone={() => setAuthed(true)} />
+        <LoadingLayer />
         {toastMsg && <div className="toast">{toastMsg}</div>}
       </Ctx.Provider>
     )
@@ -125,6 +127,7 @@ export default function App() {
       {sheets.map((s) => (
         <Sheet key={s.id} onClose={s.close}>{s.node}</Sheet>
       ))}
+      <LoadingLayer />
       {toastMsg && <div className="toast">{toastMsg}</div>}
     </Ctx.Provider>
   )
