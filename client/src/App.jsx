@@ -8,17 +8,17 @@ import Orders from './views/Orders.jsx'
 import Debts from './views/Debts.jsx'
 import Products from './views/Products.jsx'
 import Sheet from './components/Sheet.jsx'
-import { IconBox, IconHome, IconLogout, IconOrders, IconTruck, IconUsers, IconWallet } from './components/icons.jsx'
+import { IconLogout } from './components/icons.jsx'
 import Customers from './views/Customers.jsx'
 import Shipments from './views/Shipments.jsx'
 
 const TABS = [
-  ['home', IconHome, 'Tổng quan', Home],
-  ['orders', IconOrders, 'Đơn hàng', Orders],
-  ['shipping', IconTruck, 'Vận chuyển', Shipments],
-  ['debts', IconWallet, 'Công nợ', Debts],
-  ['products', IconBox, 'Hàng hóa', Products],
-  ['customers', IconUsers, 'Khách hàng', Customers]
+  ['home', '📊', 'Tổng quan', Home],
+  ['orders', '🧾', 'Đơn hàng', Orders],
+  ['shipping', '🚚', 'Vận chuyển', Shipments],
+  ['debts', '💰', 'Công nợ', Debts],
+  ['products', '📦', 'Hàng hóa', Products],
+  ['customers', '👥', 'Khách hàng', Customers]
 ]
 
 export default function App() {
@@ -105,7 +105,7 @@ export default function App() {
           <View key={tab} />
         </main>
         <nav className="tabs">
-          {TABS.map(([k, Icon, label]) => (
+          {TABS.map(([k, icon, label]) => (
             <button
               key={k}
               className={k === tab ? 'on' : ''}
@@ -116,7 +116,7 @@ export default function App() {
                 else setTab(k)
               }}
             >
-              <Icon active={k === tab} />
+              <span className="emo">{icon}</span>
               {label}
             </button>
           ))}
