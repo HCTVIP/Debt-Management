@@ -9,7 +9,7 @@ import compression from 'compression'
 import { createClient } from '@supabase/supabase-js'
 import ws from 'ws'
 
-const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET, APP_USERNAME = 'admin', PORT = 3000 } = process.env
+const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET, APP_USERNAME = 'admin', GOOGLE_MAPS_API_KEY, PORT = 3000 } = process.env
 for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET })) {
   if (!v) {
     console.error(`Thiếu biến môi trường ${k}`)
@@ -26,6 +26,7 @@ app.set('trust proxy', 1) // chạy sau proxy của Render: lấy đúng IP ngư
 app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:', new URL(SUPABASE_URL).origin] } } }))
 app.use(compression())
 app.use('/api/products/:id/image', express.json({ limit: '3mb' })) // ảnh base64 đã thu nhỏ ở trình duyệt
+app.use('/api/shipments/:id/proofs', express.json({ limit: '3mb' }))
 app.use(express.json({ limit: '200kb' }))
 
 // ---- Auth: token = payload.hmac, hạn 7 ngày ----
@@ -292,17 +293,46 @@ app.delete('/api/payments/:id', wrap(async (req) => {
 
 // ---- Vận chuyển: mỗi chuyến thuộc về một đơn hàng (đơn hàng là khoá chính) ----
 const SHIP_STATUS = ['pending', 'shipping', 'delivered']
-const shipErr = (e) =>
-  /shipments/.test(e.message || '') && /(does not exist|schema cache)/.test(e.message || '')
-    ? new Error('Chưa tạo bảng vận chuyển: chạy supabase/002_shipments.sql trong Supabase SQL Editor')
-    : e
+const shipErr = (e) => {
+  const m = e.message || ''
+  if (/(pickup_|delivery_|distance_km|duration_min|delivered_at)/.test(m) && /(column|schema cache)/.test(m)) return new Error('Chưa thêm cột vị trí giao hàng: chạy supabase/004_shipment_location.sql trong Supabase SQL Editor')
+  if (/shipments/.test(m) && /(does not exist|schema cache)/.test(m)) return new Error('Chưa tạo bảng vận chuyển: chạy supabase/002_shipments.sql trong Supabase SQL Editor')
+  return e
+}
 const shipBody = (b) => {
   need(b.order_id, 'Chọn đơn hàng')
   const fee = b.fee === '' || b.fee == null ? 0 : Number(b.fee)
   if (!(fee >= 0)) throw new Error('Cước phí không hợp lệ')
   const status = b.status || 'pending'
   if (!SHIP_STATUS.includes(status)) throw new Error('Trạng thái không hợp lệ')
-  return { order_id: b.order_id, ship_date: b.ship_date || undefined, vehicle: String(b.vehicle || '').trim() || null, driver: String(b.driver || '').trim() || null, fee, status, note: String(b.note || '').trim() || null }
+  const out = { order_id: b.order_id, ship_date: b.ship_date || undefined, vehicle: String(b.vehicle || '').trim() || null, driver: String(b.driver || '').trim() || null, fee, status, note: String(b.note || '').trim() || null }
+  // Vị trí giao hàng (cần chạy supabase/004_shipment_location.sql)
+  const text = (v) => String(v || '').trim().slice(0, 300) || null
+  const coord = (v, lim, msg) => {
+    if (v === '' || v == null) return null
+    const n = Number(v)
+    if (!(Math.abs(n) <= lim)) throw new Error(msg)
+    return n
+  }
+  const loc = {
+    pickup_address: text(b.pickup_address),
+    pickup_lat: coord(b.pickup_lat, 90, 'Vĩ độ điểm nhận không hợp lệ'),
+    pickup_lng: coord(b.pickup_lng, 180, 'Kinh độ điểm nhận không hợp lệ'),
+    delivery_address: text(b.delivery_address),
+    delivery_lat: coord(b.delivery_lat, 90, 'Vĩ độ điểm giao không hợp lệ'),
+    delivery_lng: coord(b.delivery_lng, 180, 'Kinh độ điểm giao không hợp lệ'),
+    distance_km: b.distance_km === '' || b.distance_km == null ? null : Math.max(0, Number(b.distance_km)) || 0,
+    duration_min: b.duration_min === '' || b.duration_min == null ? null : Math.max(0, Math.round(Number(b.duration_min))) || 0,
+    delivered_at: status === 'delivered' ? b.delivered_at || new Date().toISOString() : null
+  }
+  // Chưa có cột mới thì chỉ gửi các trường có dữ liệu, để chuyến xe cũ vẫn lưu được
+  return { ...out, ...(locationColumns.ready ? loc : Object.fromEntries(Object.entries(loc).filter(([, v]) => v !== null))) }
+}
+const locationColumns = { ready: false }
+const probeLocation = async () => {
+  if (locationColumns.ready) return
+  const { error } = await db.from('shipments').select('pickup_address').limit(1)
+  locationColumns.ready = !error
 }
 const SHIP_SELECT = '*, orders(code, order_date, total, partner_id, partners(name))'
 app.get('/api/shipments', wrap(async (req) => {
@@ -320,6 +350,7 @@ app.get('/api/shipments', wrap(async (req) => {
 }))
 app.post('/api/shipments', wrap(async (req) => {
   try {
+    await probeLocation()
     return ok(await db.from('shipments').insert(shipBody(req.body)).select(SHIP_SELECT).single())
   } catch (e) {
     throw shipErr(e)
@@ -327,6 +358,7 @@ app.post('/api/shipments', wrap(async (req) => {
 }))
 app.put('/api/shipments/:id', wrap(async (req) => {
   try {
+    await probeLocation()
     return ok(await db.from('shipments').update(shipBody(req.body)).eq('id', req.params.id).select(SHIP_SELECT).single())
   } catch (e) {
     throw shipErr(e)
@@ -338,6 +370,113 @@ app.delete('/api/shipments/:id', wrap(async (req) => {
   } catch (e) {
     throw shipErr(e)
   }
+}))
+
+// ---- Bản đồ: Google Maps Platform, khoá API chỉ nằm ở máy chủ ----
+// Cần bật Geocoding API và Routes API cho khoá. Không có khoá thì vẫn tính được khoảng cách đường chim bay.
+const haversineKm = (a, b) => {
+  const R = 6371
+  const rad = (x) => (x * Math.PI) / 180
+  const dLat = rad(b.lat - a.lat)
+  const dLng = rad(b.lng - a.lng)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+const needKey = () => {
+  if (!GOOGLE_MAPS_API_KEY) throw new Error('Chưa cấu hình GOOGLE_MAPS_API_KEY trên máy chủ')
+}
+const gmJson = async (url, init) => {
+  const r = await fetch(url, { ...init, signal: AbortSignal.timeout(10000) })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(j.error?.message || j.error_message || 'Lỗi Google Maps (' + r.status + ')')
+  return j
+}
+const geoResults = (j) => {
+  if (j.status === 'ZERO_RESULTS') return []
+  if (j.status !== 'OK') throw new Error('Google Maps: ' + j.status + (j.error_message ? ' - ' + j.error_message : ''))
+  return j.results.slice(0, 5).map((r) => ({ address: r.formatted_address, lat: r.geometry.location.lat, lng: r.geometry.location.lng }))
+}
+app.get('/api/maps/status', wrap(async () => ({ enabled: !!GOOGLE_MAPS_API_KEY })))
+app.get('/api/maps/geocode', wrap(async (req) => {
+  needKey()
+  const address = String(req.query.address || '').trim()
+  if (address.length < 3) throw new Error('Nhập địa chỉ (ít nhất 3 ký tự)')
+  return geoResults(await gmJson(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&region=vn&language=vi&key=${GOOGLE_MAPS_API_KEY}`))
+}))
+app.get('/api/maps/reverse', wrap(async (req) => {
+  needKey()
+  const lat = Number(req.query.lat)
+  const lng = Number(req.query.lng)
+  if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) throw new Error('Toạ độ không hợp lệ')
+  return geoResults(await gmJson(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=vi&key=${GOOGLE_MAPS_API_KEY}`))[0] || null
+}))
+// Khoảng cách từ điểm nhận đến điểm giao: theo đường đi (Routes API), dự phòng đường chim bay
+app.get('/api/maps/route', wrap(async (req) => {
+  const [a, b] = ['from', 'to'].map((k) => ({ lat: Number(req.query[k + '_lat']), lng: Number(req.query[k + '_lng']) }))
+  for (const p of [a, b]) if (!(Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180)) throw new Error('Toạ độ không hợp lệ')
+  const straight = Math.round(haversineKm(a, b) * 100) / 100
+  if (!GOOGLE_MAPS_API_KEY) return { distance_km: straight, duration_min: null, method: 'straight' }
+  try {
+    const point = (p) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } })
+    const j = await gmJson('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY, 'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration' },
+      body: JSON.stringify({ origin: point(a), destination: point(b), travelMode: 'DRIVE', regionCode: 'VN', languageCode: 'vi' })
+    })
+    const r = j.routes?.[0]
+    if (!r || r.distanceMeters == null) throw new Error('Không tìm được đường đi')
+    return { distance_km: Math.round(r.distanceMeters / 10) / 100, duration_min: Math.round(parseInt(r.duration, 10) / 60) || null, method: 'road' }
+  } catch (e) {
+    return { distance_km: straight, duration_min: null, method: 'straight', warning: e.message }
+  }
+}))
+// Link rút gọn của Google Maps (maps.app.goo.gl...) -> link đầy đủ có toạ độ. Chỉ cho phép đúng tên miền Google để tránh bị lợi dụng gọi URL tuỳ ý.
+const MAPS_HOSTS = ['maps.app.goo.gl', 'goo.gl', 'google.com', 'www.google.com', 'maps.google.com']
+app.get('/api/maps/resolve', wrap(async (req) => {
+  let u
+  try {
+    u = new URL(String(req.query.url || ''))
+  } catch {
+    throw new Error('Link không hợp lệ')
+  }
+  if (u.protocol !== 'https:' || !MAPS_HOSTS.includes(u.hostname)) throw new Error('Chỉ hỗ trợ link Google Maps')
+  const r = await fetch(u, { redirect: 'follow', signal: AbortSignal.timeout(8000) })
+  const final = new URL(r.url)
+  if (!MAPS_HOSTS.includes(final.hostname)) throw new Error('Link không hợp lệ')
+  return { url: final.href }
+}))
+
+// ---- Ảnh xác nhận giao hàng: Supabase Storage (bucket delivery-proofs), thư mục = id chuyến xe ----
+const PROOF_BUCKET = 'delivery-proofs'
+db.storage
+  .createBucket(PROOF_BUCKET, { public: true, fileSizeLimit: 2 * 1024 * 1024, allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'] })
+  .then(({ error }) => {
+    if (error && !/already exists/i.test(error.message)) console.error('Storage:', error.message)
+  })
+const UUID = /^[0-9a-f-]{36}$/i
+const proofUrl = (id, name) => `${SUPABASE_URL}/storage/v1/object/public/${PROOF_BUCKET}/${id}/${name}`
+app.get('/api/shipments/:id/proofs', wrap(async (req) => {
+  if (!UUID.test(req.params.id)) throw new Error('Mã chuyến không hợp lệ')
+  const { data, error } = await db.storage.from(PROOF_BUCKET).list(req.params.id, { limit: 50, sortBy: { column: 'name', order: 'asc' } })
+  if (error) throw new Error(error.message)
+  return data.filter((f) => f.id).map((f) => ({ name: f.name, url: proofUrl(req.params.id, f.name) }))
+}))
+app.post('/api/shipments/:id/proofs', wrap(async (req) => {
+  if (!UUID.test(req.params.id)) throw new Error('Mã chuyến không hợp lệ')
+  const m = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data || ''))
+  if (!m) throw new Error('Ảnh không hợp lệ (chỉ JPEG, PNG hoặc WebP)')
+  const buf = Buffer.from(m[2], 'base64')
+  if (buf.length > 2 * 1024 * 1024) throw new Error('Ảnh quá lớn (tối đa 2MB)')
+  ok(await db.from('shipments').select('id').eq('id', req.params.id).single())
+  const name = `${Date.now()}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`
+  const { error } = await db.storage.from(PROOF_BUCKET).upload(`${req.params.id}/${name}`, buf, { contentType: 'image/' + m[1], cacheControl: '3600' })
+  if (error) throw new Error(error.message)
+  return { name, url: proofUrl(req.params.id, name) }
+}))
+app.delete('/api/shipments/:id/proofs/:name', wrap(async (req) => {
+  if (!UUID.test(req.params.id) || !/^[0-9]+\.(jpg|png|webp)$/.test(req.params.name)) throw new Error('Tham số không hợp lệ')
+  const { error } = await db.storage.from(PROOF_BUCKET).remove([`${req.params.id}/${req.params.name}`])
+  if (error) throw new Error(error.message)
 }))
 
 // ---- Công nợ theo đối tác + tổng quan ----

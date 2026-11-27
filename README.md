@@ -16,3 +16,9 @@ supabase/schema.sql  tạo bảng, view, hàm
 
 ## Deploy
 Dùng `Dockerfile` (Render / Railway / Fly.io): đặt 4 biến môi trường ở trên; không commit `.env`.
+
+## Vận chuyển: vị trí giao hàng, khoảng cách, ảnh xác nhận
+- Chạy `supabase/004_shipment_location.sql` 1 lần để thêm cột vị trí / khoảng cách cho bảng `shipments`.
+- (Tuỳ chọn) Đặt `GOOGLE_MAPS_API_KEY` để tìm địa chỉ, lấy địa chỉ từ vị trí hiện tại và tính khoảng cách theo đường đi.
+  Khoá chỉ dùng ở server (không lộ ra trình duyệt). Cần bật **Geocoding API** và **Routes API**, nên giới hạn khoá theo API.
+- Ảnh xác nhận giao hàng lưu ở Supabase Storage (bucket `delivery-proofs`).

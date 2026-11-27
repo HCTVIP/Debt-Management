@@ -3,7 +3,7 @@ import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
 import { Avatar, Fab, Lnk, Page, Seg, Status, useChunk } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
 import { useLinks } from '../links'
-import { SHIP_STATUS, dt, money, periodQS, qs } from '../utils'
+import { SHIP_STATUS, dt, km, money, periodQS, qs } from '../utils'
 
 export default function Shipments() {
   const { period } = useApp()
@@ -57,6 +57,9 @@ export default function Shipments() {
                       </span>
                       <span className="nw">{dt(s.ship_date)} · {money(s.fee)}</span>
                     </div>
+                    {(s.delivery_address || s.distance_km != null) && (
+                      <div className="sline">📍 {s.delivery_address || '---'}{s.distance_km != null ? ' · ' + km(s.distance_km) : ''}</div>
+                    )}
                   </div>
                 </div>
               ))}
