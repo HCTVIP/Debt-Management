@@ -85,7 +85,15 @@ const crud = (route, table, fields, order, validate) => {
   app.get(`/api/${route}`, wrap(async (req) => {
     let q = db.from(table).select('*').order(order, { ascending: order === 'name' })
     if (req.query.type) q = q.eq('type', req.query.type)
-    return ok(await q)
+    const rows = ok(await q)
+    // ?debt=1: kèm tổng nợ còn lại của từng đối tác
+    if (route === 'partners' && req.query.debt === '1') {
+      const os = await fetchAll(() => db.from('order_summary').select('partner_id, debt').gt('debt', 0).order('code'))
+      const d = new Map()
+      for (const o of os) d.set(o.partner_id, (d.get(o.partner_id) || 0) + Number(o.debt))
+      for (const r of rows) r.debt = d.get(r.id) || 0
+    }
+    return rows
   }))
   app.post(`/api/${route}`, wrap(async (req) => {
     const b = pick(req.body, fields)
@@ -112,12 +120,53 @@ crud('products', 'products', ['name', 'unit', 'cost_price', 'sale_price', 'stock
   if (b.supplier_id === '') b.supplier_id = null
 })
 
+// ---- Lọc theo kỳ: month=YYYY-MM hoặc year=YYYY (bỏ trống = tất cả) ----
+const period = (query) => {
+  const { month, year, from, to } = query
+  if (from || to) {
+    const okDate = (d) => /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(d) && !Number.isNaN(Date.parse(d + 'T00:00:00Z'))
+    if ((from && !okDate(from)) || (to && !okDate(to))) throw new Error('Ngày không hợp lệ')
+    if (from && to && from > to) throw new Error('Từ ngày phải trước đến ngày')
+    // "đến ngày" tính cả ngày đó
+    const next = to ? new Date(Date.parse(to + 'T00:00:00Z') + 864e5).toISOString().slice(0, 10) : '9999-12-31'
+    return { from: from || '0001-01-01', to: next }
+  }
+  if (month) {
+    if (!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Tháng không hợp lệ')
+    const [y, m] = month.split('-').map(Number)
+    const ny = m === 12 ? y + 1 : y
+    const nm = m === 12 ? 1 : m + 1
+    return { from: `${month}-01`, to: `${ny}-${String(nm).padStart(2, '0')}-01` }
+  }
+  if (year) {
+    if (!/^[0-9]{4}$/.test(year)) throw new Error('Năm không hợp lệ')
+    return { from: `${year}-01-01`, to: `${Number(year) + 1}-01-01` }
+  }
+  return null
+}
+const inPeriod = (q, p, col = 'order_date') => (p ? q.gte(col, p.from).lt(col, p.to) : q)
+// Supabase giới hạn 1000 dòng / lần: lấy hết theo trang
+const fetchAll = async (build) => {
+  const out = []
+  for (let from = 0; ; from += 1000) {
+    const rows = ok(await build().range(from, from + 999))
+    out.push(...rows)
+    if (rows.length < 1000) return out
+  }
+}
+
 // ---- Đơn hàng ----
 app.get('/api/orders', wrap(async (req) => {
-  let q = db.from('order_summary').select('*').order('created_at', { ascending: false }).limit(200)
-  if (req.query.type) q = q.eq('type', req.query.type)
-  if (req.query.open === '1') q = q.gt('debt', 0)
-  return ok(await q)
+  const p = period(req.query)
+  return fetchAll(() => {
+    let q = db.from('order_summary').select('*').order('order_date', { ascending: false }).order('code', { ascending: false })
+    if (req.query.type) q = q.eq('type', req.query.type)
+    if (req.query.partner_id) q = q.eq('partner_id', req.query.partner_id)
+    if (req.query.open === '1') q = q.gt('debt', 0)
+    const text = String(req.query.q || '').replace(/[,()%*\\]/g, ' ').trim()
+    if (text) q = q.or(`code.ilike.%${text}%,partner_name.ilike.%${text}%`)
+    return inPeriod(q, p)
+  })
 }))
 app.get('/api/orders/:id', wrap(async (req) => {
   const id = req.params.id
@@ -136,6 +185,52 @@ app.post('/api/orders', wrap(async (req) => {
   const id = ok(await db.rpc('create_order', { p: { ...pick(b, ['type', 'partner_id', 'order_date', 'note']), paid: Number(b.paid) || 0, items } }))
   return { id }
 }))
+// Sửa đơn: đơn có mặt hàng thì thay toàn bộ mặt hàng (tồn kho điều chỉnh theo chênh lệch);
+// đơn không có mặt hàng (nợ đầu kỳ / điều chỉnh) thì sửa trực tiếp tổng tiền.
+// Lưu ý: không nằm trong 1 transaction, thêm mặt hàng mới trước rồi mới xoá mặt hàng cũ để không mất dữ liệu nếu lỗi giữa chừng.
+app.put('/api/orders/:id', wrap(async (req) => {
+  const id = req.params.id
+  const b = req.body
+  need(b.partner_id, 'Chọn đối tác')
+  const old = ok(await db.from('order_summary').select('*').eq('id', id).single())
+  const partner = ok(await db.from('partners').select('type').eq('id', b.partner_id).single())
+  if (partner.type !== (old.type === 'in' ? 'supplier' : 'customer')) throw new Error('Đối tác không đúng loại của đơn')
+  const oldItems = ok(await db.from('order_items').select('id, product_id, qty').eq('order_id', id))
+  const upd = { partner_id: b.partner_id, order_date: b.order_date || old.order_date, note: b.note || null }
+  let newItems = null
+  if (oldItems.length) {
+    newItems = (b.items || []).map((i) => ({ order_id: id, product_id: i.product_id, qty: Number(i.qty), price: Number(i.price) }))
+    if (!newItems.length || newItems.some((i) => !i.product_id || !(i.qty > 0) || !(i.price >= 0))) throw new Error('Mặt hàng không hợp lệ')
+    upd.total = newItems.reduce((s, i) => s + i.qty * i.price, 0)
+  } else {
+    upd.total = Number(b.total)
+    if (!(upd.total >= 0)) throw new Error('Tổng tiền không hợp lệ')
+  }
+  if (upd.total + 0.5 < Number(old.paid)) throw new Error('Tổng đơn nhỏ hơn số tiền đã thanh toán, hãy sửa thanh toán trước')
+  if (newItems) {
+    ok(await db.from('order_items').insert(newItems))
+    ok(await db.from('order_items').delete().in('id', oldItems.map((i) => i.id)))
+    const sign = old.type === 'in' ? 1 : -1
+    const delta = new Map()
+    for (const i of newItems) delta.set(i.product_id, (delta.get(i.product_id) || 0) + sign * i.qty)
+    for (const i of oldItems) delta.set(i.product_id, (delta.get(i.product_id) || 0) - sign * Number(i.qty))
+    for (const [pid, d] of delta) {
+      if (!d) continue
+      const pr = ok(await db.from('products').select('stock').eq('id', pid).single())
+      ok(await db.from('products').update({ stock: Number(pr.stock) + d }).eq('id', pid))
+    }
+  }
+  ok(await db.from('orders').update(upd).eq('id', id))
+  return { id }
+}))
+app.put('/api/payments/:id', wrap(async (req) => {
+  const pay = ok(await db.from('payments').select('*').eq('id', req.params.id).single())
+  const amount = Number(req.body.amount)
+  if (!(amount > 0)) throw new Error('Số tiền không hợp lệ')
+  const o = ok(await db.from('order_summary').select('total, paid').eq('id', pay.order_id).single())
+  if (Number(o.paid) - Number(pay.amount) + amount > Number(o.total) + 0.5) throw new Error('Số tiền vượt tổng đơn')
+  return ok(await db.from('payments').update({ amount, paid_at: req.body.paid_at || pay.paid_at, note: req.body.note || null }).eq('id', pay.id).select().single())
+}))
 app.delete('/api/orders/:id', wrap(async (req) => {
   ok(await db.rpc('delete_order', { oid: req.params.id }))
 }))
@@ -151,8 +246,9 @@ app.delete('/api/payments/:id', wrap(async (req) => {
 }))
 
 // ---- Công nợ theo đối tác + tổng quan ----
-app.get('/api/debts', wrap(async () => {
-  const rows = ok(await db.from('order_summary').select('partner_id, partner_name, type, debt').gt('debt', 0))
+app.get('/api/debts', wrap(async (req) => {
+  const p = period(req.query)
+  const rows = await fetchAll(() => inPeriod(db.from('order_summary').select('partner_id, partner_name, type, debt').gt('debt', 0).order('partner_id').order('code'), p))
   const m = new Map()
   for (const r of rows) {
     const k = `${r.partner_id}`
@@ -163,27 +259,37 @@ app.get('/api/debts', wrap(async () => {
   }
   return [...m.values()].sort((a, b) => b.debt - a.debt)
 }))
-app.get('/api/dashboard', wrap(async () => {
-  const [sum, prods] = await Promise.all([
-    db.from('order_summary').select('type, total, debt'),
+app.get('/api/dashboard', wrap(async (req) => {
+  const per = period(req.query)
+  const [o, pays, prods] = await Promise.all([
+    fetchAll(() => inPeriod(db.from('order_summary').select('type, total, debt').order('code'), per)),
+    fetchAll(() => inPeriod(db.from('payments').select('amount, orders!inner(type)').order('id'), per, 'paid_at')),
     db.from('products').select('id, name, unit, stock, min_stock, cost_price')
   ])
-  const o = ok(sum)
   const p = ok(prods)
   const by = (t, f) => o.filter((x) => x.type === t).reduce((s, x) => s + Number(x[f]), 0)
+  const paid = (t) => pays.filter((x) => x.orders?.type === t).reduce((s, x) => s + Number(x.amount), 0)
   return {
     payable: by('in', 'debt'),
     receivable: by('out', 'debt'),
     purchased: by('in', 'total'),
     sold: by('out', 'total'),
+    collected: paid('out'),
+    paid_out: paid('in'),
     stock_value: p.reduce((s, x) => s + Number(x.stock) * Number(x.cost_price), 0),
     low_stock: p.filter((x) => Number(x.stock) <= Number(x.min_stock))
   }
 }))
 
 app.use('/api', (_q, r) => r.status(404).json({ error: 'Không tìm thấy' }))
-const dist = path.join(__dirname, fs.existsSync(path.join(__dirname, 'dist')) ? 'dist' : 'public')
-app.use(express.static(dist, { maxAge: '1h' }))
-app.get('*', (_q, r) => r.sendFile(path.join(dist, 'index.html')))
+// Giao diện React đã build (`npm run build` -> dist). File trong /assets có hash nên cache lâu; index.html thì không cache.
+const dist = path.join(__dirname, 'dist')
+if (fs.existsSync(dist)) {
+  app.use('/assets', express.static(path.join(dist, 'assets'), { maxAge: '1y', immutable: true }))
+  app.use(express.static(dist, { maxAge: 0 }))
+  app.get('*', (_q, r) => r.sendFile(path.join(dist, 'index.html')))
+} else {
+  app.get('*', (_q, r) => r.status(503).send('Chưa build giao diện: chạy `npm run build`'))
+}
 
 app.listen(PORT, () => console.log(`Server chạy tại cổng ${PORT}`))

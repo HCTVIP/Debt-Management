@@ -39,3 +39,6 @@ label{font-size:13px;color:var(--mut)}
 .login{max-width:360px;margin:20vh auto;padding:0 20px}
 .empty{text-align:center;color:var(--mut);padding:30px 0}
 @media(min-width:760px){nav.tabs{max-width:720px;margin:0 auto;border-radius:12px 12px 0 0;border:1px solid var(--bd)}.sheet-bg{align-items:center}.sheet{border-radius:18px}}
+.link{cursor:pointer}
+.stack>*+*{margin-top:8px}
+.state{text-align:center;color:var(--mut);padding:24px 0}
