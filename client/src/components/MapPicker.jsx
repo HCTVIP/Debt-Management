@@ -48,7 +48,9 @@ export default function MapPicker({ title, initial, near, onPick, onClose }) {
     if (query.length < 3) return toast('Nhập địa chỉ (ít nhất 3 ký tự)')
     setBusy(true)
     try {
-      const list = await api('/maps/geocode?address=' + encodeURIComponent(query))
+      // ưu tiên khu vực quanh điểm đang xem / điểm còn lại / Huế
+      const b = chosen || near || HUE
+      const list = await api(`/maps/geocode?address=${encodeURIComponent(query)}&lat=${b.lat}&lng=${b.lng}`)
       if (!list.length) {
         setResults([])
         toast('Không tìm thấy địa chỉ này. Thử ghi thêm phường / quận / thành phố, hoặc chạm trực tiếp lên bản đồ.')
