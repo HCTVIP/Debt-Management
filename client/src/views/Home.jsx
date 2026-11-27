@@ -2,7 +2,7 @@ import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
 import { Page, Status } from '../components/Bits.jsx'
 import { BarChart, Donut, HBar, short } from '../components/Charts.jsx'
 import { useApp, useData } from '../ctx'
-import { money, periodLabel, periodQS } from '../utils'
+import { money, periodQS } from '../utils'
 
 /** Tổng quan: chỉ xem (biểu đồ + số liệu), không có thao tác thêm / sửa. */
 export default function Home() {
@@ -22,12 +22,12 @@ export default function Home() {
       <Status state={st} />
       {d && (
         <>
-          <div className="mut hint">Số liệu: {periodLabel(period)}</div>
           <div className="grid2 kpis">
             <div className="card stat"><small>Bán hàng</small><b>{money(d.sold)}</b></div>
             <div className="card stat"><small>Đã thu từ khách</small><b className="grn">{money(d.collected)}</b></div>
             <div className="card stat"><small>Khách còn nợ</small><b className="red">{money(d.receivable)}</b></div>
             <div className="card stat"><small>Chi</small><b>{money(d.spent)}</b></div>
+            <div className="card stat"><small>Tổng số khách hàng</small><b>{d.customers}</b></div>
           </div>
 
           <div className="card">

@@ -417,7 +417,7 @@ app.get('/api/dashboard', wrap(async (req) => {
       return []
     }
   }
-  const [o, pays, items, cash, prods] = await Promise.all([
+  const [o, pays, items, cash, prods, custCount] = await Promise.all([
     fetchAll(() => inPeriod(db.from('order_summary').select('partner_id, partner_name, type, total, paid, debt, order_date').order('code'), per)),
     fetchAll(() => inPeriod(db.from('payments').select('amount, paid_at, orders!inner(type)').order('id'), per, 'paid_at')),
     fetchAll(() => {
@@ -426,7 +426,8 @@ app.get('/api/dashboard', wrap(async (req) => {
       return q
     }),
     optional(() => fetchAll(() => inPeriod(db.from('cashflow').select('kind, amount, entry_date').order('id'), per, 'entry_date'))),
-    db.from('products').select('id, name, unit, stock, min_stock, cost_price')
+    db.from('products').select('id, name, unit, stock, min_stock, cost_price'),
+    db.from('partners').select('id', { count: 'exact', head: true }).eq('type', 'customer')
   ])
   const p = ok(prods)
   const by = (t, f) => o.filter((x) => x.type === t).reduce((s, x) => s + Number(x[f]), 0)
@@ -472,6 +473,7 @@ app.get('/api/dashboard', wrap(async (req) => {
     sold: by('out', 'total'),
     collected: paid('out'),
     paid_out: paid('in'),
+    customers: custCount.count || 0,
     other_in: cashSum('in'),
     spent: cashSum('out'),
     stock_value: p.reduce((s, x) => s + Number(x.stock) * Number(x.cost_price), 0),

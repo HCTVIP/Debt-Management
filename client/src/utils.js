@@ -11,27 +11,10 @@ export const defaultPeriod = () => {
   return { from: iso(new Date(n.getFullYear(), n.getMonth(), 1)), to: iso(n) }
 }
 
-export const loadPeriod = () => {
-  try {
-    const p = JSON.parse(localStorage.getItem('period'))
-    if (!p) return defaultPeriod()
-    if ('from' in p && !('mode' in p)) return { from: p.from || '', to: p.to || '' }
-    // Dữ liệu cũ (chế độ tháng / năm / khoảng ngày) -> quy về từ ngày - đến ngày
-    if (p.mode === 'month' && p.month) {
-      const [y, m] = p.month.split('-').map(Number)
-      return { from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) }
-    }
-    if (p.mode === 'year' && p.year) return { from: p.year + '-01-01', to: p.year + '-12-31' }
-    if (p.mode === 'range') return { from: p.from || '', to: p.to || '' }
-    return defaultPeriod()
-  } catch {
-    return defaultPeriod()
-  }
-}
+/** Mỗi lần mở app luôn bắt đầu từ đầu tháng hiện tại đến hôm nay (không nhớ bộ lọc lần trước). */
+export const loadPeriod = () => defaultPeriod()
 
 export const periodQS = (p) => [p.from && 'from=' + p.from, p.to && 'to=' + p.to].filter(Boolean).join('&')
-
-export const periodLabel = (p) => (p.from || p.to ? `${p.from ? dt(p.from) : '...'} - ${p.to ? dt(p.to) : '...'}` : 'Tất cả thời gian')
 
 export const qs = (...parts) => parts.filter(Boolean).join('&')
 
