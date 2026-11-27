@@ -37,26 +37,47 @@ export const qs = (...parts) => parts.filter(Boolean).join('&')
 
 export const SHIP_STATUS = { pending: 'Chờ giao', shipping: 'Đang giao', delivered: 'Đã giao' }
 
-/** Thu nhỏ ảnh (cạnh dài tối đa `max` px) và trả về data URL JPEG để tải lên. */
-export const resizeImage = (file, max = 800) =>
-  new Promise((resolve, reject) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      const r = Math.min(1, max / Math.max(img.width, img.height))
-      const c = document.createElement('canvas')
-      c.width = Math.round(img.width * r)
-      c.height = Math.round(img.height * r)
-      const g = c.getContext('2d')
-      g.fillStyle = '#fff'
-      g.fillRect(0, 0, c.width, c.height)
-      g.drawImage(img, 0, 0, c.width, c.height)
-      URL.revokeObjectURL(url)
-      resolve(c.toDataURL('image/jpeg', 0.85))
+/** Đọc file ảnh thành đối tượng vẽ được lên canvas. Ưu tiên createImageBitmap (tự xoay theo EXIF), dự phòng bằng thẻ img. */
+const decodeImage = async (file) => {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await createImageBitmap(file, { imageOrientation: 'from-image' })
+    } catch {
+      /* định dạng không hỗ trợ: thử cách dự phòng */
     }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('Không đọc được ảnh'))
-    }
-    img.src = url
+  }
+  const dataUrl = await new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(r.result)
+    r.onerror = () => reject(new Error('read'))
+    r.readAsDataURL(file)
   })
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('decode'))
+    img.src = dataUrl
+  })
+}
+
+/** Thu nhỏ ảnh (cạnh dài tối đa `max` px) và trả về data URL JPEG để tải lên. */
+export const resizeImage = async (file, max = 800) => {
+  let src
+  try {
+    src = await decodeImage(file)
+  } catch {
+    throw new Error('Không đọc được ảnh này. Hãy chọn ảnh JPG hoặc PNG (ảnh HEIC chưa hỗ trợ trên một số máy).')
+  }
+  const w = src.width
+  const h = src.height
+  const r = Math.min(1, max / Math.max(w, h))
+  const c = document.createElement('canvas')
+  c.width = Math.max(1, Math.round(w * r))
+  c.height = Math.max(1, Math.round(h * r))
+  const g = c.getContext('2d')
+  g.fillStyle = '#fff'
+  g.fillRect(0, 0, c.width, c.height)
+  g.drawImage(src, 0, 0, c.width, c.height)
+  src.close?.()
+  return c.toDataURL('image/jpeg', 0.85)
+}

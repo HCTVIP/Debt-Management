@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
 import OrderForm from '../components/OrderForm.jsx'
-import { Fab, OrderRow, Page, Status } from '../components/Bits.jsx'
+import { Fab, OrderRow, Page, Status, useChunk } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
 import { money, periodLabel, periodQS, qs } from '../utils'
 
@@ -16,6 +16,7 @@ export default function Orders() {
     ...(ord.partner ? [{ path: '/partners/' + ord.partner, optional: true }] : [])
   ])
   const [list, partner] = st.data || [[], null]
+  const [shown, mark] = useChunk(list)
   const total = list.reduce((s, o) => s + Number(o.total), 0)
   const debt = list.reduce((s, o) => s + Number(o.debt), 0)
   const submit = () => {
@@ -43,7 +44,7 @@ export default function Orders() {
             <span>{list.length} đơn · {periodLabel(period)}</span>
             <span><b>{money(total)}</b> · <span className="red">nợ {money(debt)}</span></span>
           </div>
-          {list.length ? list.map((o) => <OrderRow key={o.id} o={o} />) : <div className="empty">Không có đơn</div>}
+          {list.length ? <>{shown.map((o) => <OrderRow key={o.id} o={o} />)}{mark}</> : <div className="empty">Không có đơn</div>}
         </>
       )}
       <Fab onClick={() => openSheet((close) => <OrderForm close={close} />)} />
