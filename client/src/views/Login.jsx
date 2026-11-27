@@ -26,7 +26,7 @@ export default function Login({ onDone }) {
     <div className="loginwrap">
       <div className="logincol">
         <div className="brand">
-          <div className="logo" aria-hidden="true">₫</div>
+          <img className="logoimg" src="/logo-longtho.png" alt="Long Thọ" width="72" height="72" />
           <h1>Quản lý công nợ</h1>
           <p>Đơn hàng · Vận chuyển · Công nợ</p>
         </div>

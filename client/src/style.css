@@ -350,3 +350,9 @@ select.hasx{padding-right:58px}
 /* ✕ trong ô ngày nằm cạnh biểu tượng lịch, phía trên lớp input trong suốt */
 .dfx{position:relative;transform:none;flex:none;margin-left:auto;margin-right:6px;z-index:3}
 .dfield svg{flex:none}
+
+/* Logo Long Thọ (màn đăng nhập + header); header không hiện tên tab */
+.logoimg{display:block;width:84px;height:84px;margin:0 auto 12px;padding:6px;border-radius:50%;background:#fff;box-shadow:0 6px 18px rgba(0,0,0,.25);object-fit:contain}
+.brandimg{flex:none;width:30px;height:30px;border-radius:50%;background:#fff;padding:1px;object-fit:contain}
+.hspacer{flex:1}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
