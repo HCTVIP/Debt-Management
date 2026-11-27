@@ -72,10 +72,9 @@ export default function App() {
     // Chỉ thu nhỏ bố cục theo vùng nhìn thấy khi BÀN PHÍM đang mở (có ô nhập đang chọn và vùng nhìn thấy thấp hơn cửa sổ rõ rệt).
     // Không thì bỏ biến để bố cục dùng 100% như bình thường: trước đây biến có thể kẹt ở giá trị nhỏ trên iPhone và cắt cụt màn hình.
     const sync = () => {
-      // Chiều cao thật của vùng hiển thị: dự phòng khi dvh không cập nhật (thanh công cụ trình duyệt thu gọn / hiện lại)
-      root.setProperty('--app-h', window.innerHeight + 'px')
       const field = isField(document.activeElement)
       const keyboard = field && vv && vv.height < window.innerHeight - 80
+      document.documentElement.classList.toggle('kb', !!keyboard)
       if (keyboard) {
         root.setProperty('--vvh', vv.height + 'px')
         root.setProperty('--vvt', vv.offsetTop + 'px')
