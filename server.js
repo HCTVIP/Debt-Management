@@ -10,7 +10,7 @@ import { createClient } from '@supabase/supabase-js'
 import ws from 'ws'
 import ExcelJS from 'exceljs'
 
-const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET, APP_USERNAME = 'admin', GOOGLE_MAPS_API_KEY, PORT = 3000 } = process.env
+const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET, APP_USERNAME = 'admin', GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_BROWSER_KEY, PORT = 3000 } = process.env
 for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET })) {
   if (!v) {
     console.error(`Thiếu biến môi trường ${k}`)
@@ -24,7 +24,23 @@ const app = express()
 app.disable('x-powered-by')
 app.set('trust proxy', 1) // chạy sau proxy của Render: lấy đúng IP người dùng để giới hạn đăng nhập sai
 // Ảnh hàng hóa nằm ở Supabase Storage (public) nên cho phép tải ảnh từ domain Supabase
-app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:', new URL(SUPABASE_URL).origin] } } }))
+// Bản đồ trong app: Google Maps JavaScript (khi có GOOGLE_MAPS_BROWSER_KEY) hoặc ô bản đồ OpenStreetMap (Leaflet)
+const GOOGLE_IMG = ['https://*.googleapis.com', 'https://*.gstatic.com', 'https://*.ggpht.com', 'https://*.google.com']
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", 'https://maps.googleapis.com'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+        imgSrc: ["'self'", 'data:', 'blob:', new URL(SUPABASE_URL).origin, 'https://tile.openstreetmap.org', 'https://*.tile.openstreetmap.org', ...GOOGLE_IMG],
+        connectSrc: ["'self'", 'https://maps.googleapis.com', 'https://*.googleapis.com'],
+        workerSrc: ["'self'", 'blob:']
+      }
+    }
+  })
+)
 app.use(compression())
 app.use('/api/products/:id/image', express.json({ limit: '3mb' })) // ảnh base64 đã thu nhỏ ở trình duyệt
 app.use('/api/shipments/:id/proofs', express.json({ limit: '3mb' }))
@@ -396,7 +412,8 @@ const geoResults = (j) => {
 }
 // Tìm địa chỉ / đường đi: dùng Google Maps Platform khi có khoá; chưa có khoá thì dùng OpenStreetMap (Nominatim + OSRM, miễn phí, không cần khoá)
 const mapsProvider = () => (GOOGLE_MAPS_API_KEY ? 'google' : 'osm')
-app.get('/api/maps/status', wrap(async () => ({ enabled: !!GOOGLE_MAPS_API_KEY, provider: mapsProvider() })))
+// browserKey: khoá riêng cho trình duyệt (giới hạn theo tên miền) để hiện bản đồ Google; không có thì dùng bản đồ OpenStreetMap
+app.get('/api/maps/status', wrap(async () => ({ enabled: !!GOOGLE_MAPS_API_KEY, provider: mapsProvider(), browserKey: GOOGLE_MAPS_BROWSER_KEY || null })))
 
 // Nominatim yêu cầu tối đa 1 yêu cầu / giây và có User-Agent định danh ứng dụng
 let nextOsm = 0

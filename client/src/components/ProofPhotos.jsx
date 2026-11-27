@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useApp } from '../ctx'
 import { resizeImage } from '../utils'
@@ -6,7 +6,7 @@ import { resizeImage } from '../utils'
 /**
  * Ảnh xác nhận giao hàng. Chuyến đã lưu thì tải lên ngay; chuyến mới thì giữ trong `pending` và tải lên sau khi lưu chuyến.
  */
-export default function ProofPhotos({ shipmentId, pending, setPending }) {
+function ProofPhotos({ shipmentId, pending, setPending }) {
   const { run } = useApp()
   const [saved, setSaved] = useState([])
   const [loading, setLoading] = useState(!!shipmentId)
@@ -69,3 +69,5 @@ export default function ProofPhotos({ shipmentId, pending, setPending }) {
     </div>
   )
 }
+
+export default memo(ProofPhotos)
