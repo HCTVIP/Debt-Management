@@ -4,7 +4,7 @@ import { Avatar, Lnk, OrderRow, Page, Seg, Status, useChunk } from '../component
 import Ledger from './Ledger.jsx'
 import { useApp, useData } from '../ctx'
 import { useLinks } from '../links'
-import { money, periodLabel, periodQS } from '../utils'
+import { money, periodQS } from '../utils'
 
 function CustomerDebt({ partnerId, name }) {
   const { period } = useApp()
@@ -41,7 +41,7 @@ function DebtList({ seg }) {
       {st.data && (
         <>
           <div className="card sum">
-            <span>{rows.length} khách nợ · {periodLabel(period)}</span>
+            <span>{rows.length} khách nợ</span>
             <b className="red">{money(rows.reduce((s, r) => s + r.debt, 0))}</b>
           </div>
           {rows.length ? (

@@ -4,7 +4,7 @@ import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
 import { Fab, Page, Status, useChunk } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
 import { useLinks } from '../links'
-import { dt, money, periodLabel, periodQS } from '../utils'
+import { dt, money, periodQS } from '../utils'
 
 /** Sổ thu chi: thu từ khách (thanh toán) + thu khác + chi, theo kỳ. */
 export default function Ledger({ seg }) {
@@ -38,7 +38,7 @@ export default function Ledger({ seg }) {
             <div><small>Chi</small><b className="red">{money(t.out)}</b></div>
             <div><small>Còn lại</small><b>{money(t.balance)}</b></div>
           </div>
-          <div className="mut hint">{items.length} khoản · {periodLabel(period)}</div>
+          <div className="mut hint">{items.length} khoản</div>
           {items.length ? (
             <>
               {shown.map((i) => (

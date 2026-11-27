@@ -3,7 +3,7 @@ import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
 import { Avatar, Fab, Lnk, Page, Seg, Status, useChunk } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
 import { useLinks } from '../links'
-import { SHIP_STATUS, dt, money, periodLabel, periodQS, qs } from '../utils'
+import { SHIP_STATUS, dt, money, periodQS, qs } from '../utils'
 
 export default function Shipments() {
   const { period } = useApp()
@@ -38,7 +38,7 @@ export default function Shipments() {
       {st.data && (
         <>
           <div className="card sum">
-            <span>{rows.length} chuyến · {periodLabel(period)}</span>
+            <span>{rows.length} chuyến</span>
             <span>Cước <b>{money(fee)}</b></span>
           </div>
           {rows.length ? (

@@ -54,11 +54,6 @@ export default function App() {
       setOrd: (p) => setOrd((o) => ({ ...o, ...p })),
       setPeriod: (p) => {
         setPeriodState(p)
-        try {
-          localStorage.setItem('period', JSON.stringify(p))
-        } catch {
-          /* bỏ qua: không lưu được bộ lọc */
-        }
       },
       reload: () => setRev((r) => r + 1),
       toast,

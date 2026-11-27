@@ -3,7 +3,7 @@ import FilterBar, { useDateDraft } from '../components/FilterBar.jsx'
 import OrderForm from '../components/OrderForm.jsx'
 import { Fab, OrderRow, Page, Status, useChunk } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
-import { money, periodLabel, periodQS, qs } from '../utils'
+import { money, periodQS, qs } from '../utils'
 
 export default function Orders() {
   const { period, ord, setOrd, openSheet } = useApp()
@@ -19,6 +19,7 @@ export default function Orders() {
   const [shown, mark] = useChunk(list)
   const total = list.reduce((s, o) => s + Number(o.total), 0)
   const debt = list.reduce((s, o) => s + Number(o.debt), 0)
+  const paid = list.reduce((s, o) => s + Number(o.paid), 0)
   const submit = () => {
     if (dates.commit()) setOrd({ q: text.trim() })
   }
@@ -40,9 +41,10 @@ export default function Orders() {
       <Status state={st} />
       {st.data && (
         <>
-          <div className="card sum">
-            <span>{list.length} đơn · {periodLabel(period)}</span>
-            <span><b>{money(total)}</b> · <span className="red">nợ {money(debt)}</span></span>
+          <div className="tri">
+            <div className="card"><small>Tổng · {list.length} đơn</small><b>{money(total)}</b></div>
+            <div className="card"><small>Đã thanh toán</small><b className="grn">{money(paid)}</b></div>
+            <div className="card"><small>Nợ</small><b className="red">{money(debt)}</b></div>
           </div>
           {list.length ? <>{shown.map((o) => <OrderRow key={o.id} o={o} />)}{mark}</> : <div className="empty">Không có đơn</div>}
         </>

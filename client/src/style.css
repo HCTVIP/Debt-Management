@@ -243,3 +243,10 @@ header.top h1{font-size:17px}
 .hb-track{height:8px;border-radius:4px;background:#eef0f2;overflow:hidden}
 .hb-track div{height:100%;border-radius:4px}
 .cashsum b{font-size:13px;white-space:nowrap}
+
+/* Ba khối tổng ở màn Đơn hàng; số khách hàng ở Tổng quan chiếm cả hàng cuối */
+.tri{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:10px}
+.tri .card{margin:0;padding:8px 6px;text-align:center}
+.tri small{display:block;color:var(--mut);font-size:11px;line-height:1.2;margin-bottom:2px}
+.tri b{font-size:13px;white-space:nowrap}
+.kpis .stat:last-child:nth-child(odd){grid-column:span 2}
