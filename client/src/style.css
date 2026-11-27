@@ -284,3 +284,25 @@ a.btn.sec{background:#e5e7eb;color:var(--tx)}
 .cashdot{width:30px;height:30px;font-size:16px}
 .item.sk{padding:6px 10px}
 .sk-av{width:30px;height:30px}
+
+/* Mật khẩu có nút hiện / ẩn */
+.pwfield{position:relative}
+.pwfield input{padding-right:46px}
+.eye{position:absolute;right:2px;top:4px;width:44px;height:44px;border:0;background:none;color:var(--mut);display:flex;align-items:center;justify-content:center;padding:0}
+.eye[aria-pressed="true"]{color:var(--pri)}
+
+/* Bàn phím ảo: dùng vùng nhìn thấy thật (--vvh / --vvt do visualViewport cập nhật) để biểu mẫu không bị che */
+.loginwrap{height:var(--vvh,100%);min-height:0;display:block;overflow-y:auto;overscroll-behavior:contain;padding:24px 18px}
+.logincol{margin:0 auto;min-height:100%;display:flex;flex-direction:column;justify-content:center}
+.sheet-bg{inset:auto;left:0;right:0;top:var(--vvt,0px);height:var(--vvh,100%)}
+.sheet{max-height:calc(var(--vvh,100dvh) * .94)}
+
+/* Hướng dẫn khi chờ Google Maps */
+.waitbox{position:relative;margin:2px 0 8px;padding:8px 32px 8px 10px;border-radius:10px;background:#fdf1c8;color:#7a5a00;font-size:12px;line-height:1.4}
+.waitbox button{position:absolute;top:4px;right:4px;width:24px;height:24px;border:0;border-radius:50%;background:rgba(0,0,0,.08);color:inherit;font-size:11px;padding:0}
+/* Bàn phím mở (vùng nhìn thấy thấp): chừa chỗ cuộn để ô đang nhập nằm giữa, không sát mép bàn phím */
+@media (max-height:520px){.loginwrap{padding-bottom:160px}}
+
+/* Nút xuất Excel trên header (Tổng quan) */
+.hexport{flex:none;display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border:0;border-radius:14px;background:rgba(255,255,255,.2);color:#fff;font-size:12px;font-weight:600;white-space:nowrap}
+.hexport:active{background:rgba(255,255,255,.35)}

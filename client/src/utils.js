@@ -95,3 +95,15 @@ export const mapsPlaceLink = (p) => 'https://www.google.com/maps/search/?api=1&q
 export const mapsRouteLink = (a, b) => 'https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=' + encodeURIComponent(place(a)) + '&destination=' + encodeURIComponent(place(b))
 
 export const km = (n) => (n == null || n === '' ? '---' : new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(Number(n)) + ' km')
+
+/** Tên địa điểm trong link Google Maps dạng /maps/place/<tên>/@lat,lng (không có thì null). */
+export const placeNameFromLink = (link) => {
+  const m = String(link || '').match(/\/maps\/place\/([^/@?]+)/)
+  if (!m) return null
+  try {
+    const name = decodeURIComponent(m[1].replace(/\+/g, ' ')).trim()
+    return name && !/^-?\d{1,2}\.\d+[, ]+-?\d{1,3}\.\d+$/.test(name) ? name : null
+  } catch {
+    return null
+  }
+}

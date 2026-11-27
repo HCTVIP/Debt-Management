@@ -17,3 +17,5 @@ const Svg = ({ active, children, size = 26 }) => (
 )
 
 export const IconLogout = (p) => <Svg size={20} {...p}><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h5M15 8l4 4-4 4M19 12H9" fill="none" /></Svg>
+
+export const IconDownload = (p) => <Svg size={16} {...p}><path d="M12 4v11M7 11l5 5 5-5M5 20h14" fill="none" /></Svg>
