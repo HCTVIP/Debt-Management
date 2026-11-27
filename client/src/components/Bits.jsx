@@ -1,6 +1,5 @@
-import { useApp } from '../ctx'
+import { useLinks } from '../links'
 import { dt, money } from '../utils'
-import OrderDetail from './OrderDetail.jsx'
 
 export const Status = ({ state }) => (state.loading && !state.data ? <div className="state">Đang tải...</div> : state.error ? <div className="state red">{state.error.message}</div> : null)
 
@@ -14,18 +13,31 @@ export const Seg = ({ value, onChange, options }) => (
   </div>
 )
 
-export const OrderRow = ({ o, onClick }) => (
-  <div className="item link" onClick={onClick}>
-    <div className="row"><span className="t">{o.partner_name}</span><b>{money(o.total)}</b></div>
-    <div className="row mut">
-      <span>{o.code} · {dt(o.order_date)}</span>
-      {Number(o.debt) > 0 ? <span className="red">Nợ {money(o.debt)}</span> : <span className="grn">Đã thanh toán</span>}
-    </div>
-  </div>
+/** Chữ bấm được (không kích hoạt thẻ cha). */
+export const Lnk = ({ onClick, children }) => (
+  <span
+    className="lnk"
+    onClick={(e) => {
+      e.stopPropagation()
+      onClick()
+    }}
+  >
+    {children}
+  </span>
 )
 
-/** Trả về hàm mở chi tiết đơn (sheet tự tải lại sau mỗi lần sửa). */
-export const useOpenOrder = () => {
-  const { openSheet } = useApp()
-  return (id) => openSheet((close) => <OrderDetail id={id} close={close} />)
+export const OrderRow = ({ o }) => {
+  const { openOrder, openPartner } = useLinks()
+  return (
+    <div className="item link" onClick={() => openOrder(o.id)}>
+      <div className="row">
+        <span className="t"><Lnk onClick={() => openPartner(o.partner_id)}>{o.partner_name}</Lnk></span>
+        <b>{money(o.total)}</b>
+      </div>
+      <div className="row mut">
+        <span>{o.code} · {dt(o.order_date)}</span>
+        {Number(o.debt) > 0 ? <span className="red">Nợ {money(o.debt)}</span> : <span className="grn">Đã thanh toán</span>}
+      </div>
+    </div>
+  )
 }

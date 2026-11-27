@@ -2,27 +2,26 @@ import { useState } from 'react'
 import { api } from '../api'
 import { useApp } from '../ctx'
 
-export default function PartnerForm({ partner, type, close }) {
+export default function PartnerForm({ partner, close }) {
   const { run, reload } = useApp()
   const p = partner || {}
-  const t = p.type || type
   const [f, setF] = useState({ name: p.name || '', phone: p.phone || '', address: p.address || '', note: p.note || '' })
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const submit = run(async (e) => {
     e.preventDefault()
-    await api('/partners' + (p.id ? '/' + p.id : ''), p.id ? 'PUT' : 'POST', { ...f, type: t })
+    await api('/partners' + (p.id ? '/' + p.id : ''), p.id ? 'PUT' : 'POST', { ...f, type: 'customer' })
     close()
     reload()
   })
   const del = run(async () => {
-    if (!confirm('Xoá đối tác này?')) return
+    if (!confirm('Xoá khách hàng này?')) return
     await api('/partners/' + p.id, 'DELETE')
     close()
     reload()
   })
   return (
     <form onSubmit={submit}>
-      <h2>{p.id ? 'Sửa' : 'Thêm'} {t === 'supplier' ? 'nguồn hàng' : 'khách hàng'}</h2>
+      <h2>{p.id ? 'Sửa' : 'Thêm'} khách hàng</h2>
       <label>Tên *</label>
       <input required value={f.name} onChange={set('name')} />
       <label>Điện thoại</label>

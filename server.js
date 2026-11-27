@@ -95,6 +95,7 @@ const crud = (route, table, fields, order, validate) => {
     }
     return rows
   }))
+  app.get(`/api/${route}/:id`, wrap(async (req) => ok(await db.from(table).select('*').eq('id', req.params.id).single())))
   app.post(`/api/${route}`, wrap(async (req) => {
     const b = pick(req.body, fields)
     validate(b)
@@ -158,7 +159,9 @@ const fetchAll = async (build) => {
 // ---- Đơn hàng ----
 app.get('/api/orders', wrap(async (req) => {
   const p = period(req.query)
-  return fetchAll(() => {
+  const limit = Math.min(Number(req.query.limit) || 0, 200)
+  const run = limit ? async (b) => ok(await b().range(0, limit - 1)) : fetchAll
+  return run(() => {
     let q = db.from('order_summary').select('*').order('order_date', { ascending: false }).order('code', { ascending: false })
     if (req.query.type) q = q.eq('type', req.query.type)
     if (req.query.partner_id) q = q.eq('partner_id', req.query.partner_id)
@@ -243,6 +246,56 @@ app.post('/api/orders/:id/payments', wrap(async (req) => {
 }))
 app.delete('/api/payments/:id', wrap(async (req) => {
   ok(await db.from('payments').delete().eq('id', req.params.id))
+}))
+
+// ---- Vận chuyển: mỗi chuyến thuộc về một đơn hàng (đơn hàng là khoá chính) ----
+const SHIP_STATUS = ['pending', 'shipping', 'delivered']
+const shipErr = (e) =>
+  /shipments/.test(e.message || '') && /(does not exist|schema cache)/.test(e.message || '')
+    ? new Error('Chưa tạo bảng vận chuyển: chạy supabase/002_shipments.sql trong Supabase SQL Editor')
+    : e
+const shipBody = (b) => {
+  need(b.order_id, 'Chọn đơn hàng')
+  const fee = b.fee === '' || b.fee == null ? 0 : Number(b.fee)
+  if (!(fee >= 0)) throw new Error('Cước phí không hợp lệ')
+  const status = b.status || 'pending'
+  if (!SHIP_STATUS.includes(status)) throw new Error('Trạng thái không hợp lệ')
+  return { order_id: b.order_id, ship_date: b.ship_date || undefined, vehicle: String(b.vehicle || '').trim() || null, driver: String(b.driver || '').trim() || null, fee, status, note: String(b.note || '').trim() || null }
+}
+const SHIP_SELECT = '*, orders(code, order_date, total, partner_id, partners(name))'
+app.get('/api/shipments', wrap(async (req) => {
+  const p = period(req.query)
+  try {
+    return await fetchAll(() => {
+      let q = db.from('shipments').select(SHIP_SELECT).order('ship_date', { ascending: false }).order('created_at', { ascending: false }).order('id')
+      if (req.query.order_id) q = q.eq('order_id', req.query.order_id)
+      if (req.query.status) q = q.eq('status', req.query.status)
+      return inPeriod(q, p, 'ship_date')
+    })
+  } catch (e) {
+    throw shipErr(e)
+  }
+}))
+app.post('/api/shipments', wrap(async (req) => {
+  try {
+    return ok(await db.from('shipments').insert(shipBody(req.body)).select(SHIP_SELECT).single())
+  } catch (e) {
+    throw shipErr(e)
+  }
+}))
+app.put('/api/shipments/:id', wrap(async (req) => {
+  try {
+    return ok(await db.from('shipments').update(shipBody(req.body)).eq('id', req.params.id).select(SHIP_SELECT).single())
+  } catch (e) {
+    throw shipErr(e)
+  }
+}))
+app.delete('/api/shipments/:id', wrap(async (req) => {
+  try {
+    ok(await db.from('shipments').delete().eq('id', req.params.id))
+  } catch (e) {
+    throw shipErr(e)
+  }
 }))
 
 // ---- Công nợ theo đối tác + tổng quan ----

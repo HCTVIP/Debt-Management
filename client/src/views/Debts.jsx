@@ -1,17 +1,18 @@
 import PeriodBar from '../components/PeriodBar.jsx'
-import { OrderRow, Status, useOpenOrder } from '../components/Bits.jsx'
+import { Lnk, OrderRow, Status } from '../components/Bits.jsx'
 import { useApp, useData } from '../ctx'
-import { money, periodQS } from '../utils'
+import { useLinks } from '../links'
+import { money, periodLabel, periodQS } from '../utils'
 
-function PartnerDebt({ partnerId, name, close }) {
+function CustomerDebt({ partnerId, name }) {
   const { period } = useApp()
-  const openOrder = useOpenOrder()
+  const { openPartner } = useLinks()
   const st = useData([`/orders?open=1&partner_id=${partnerId}&${periodQS(period)}`])
   if (!st.data) return <Status state={st} />
   return (
     <>
-      <h2>{name}</h2>
-      {st.data[0].map((o) => <OrderRow key={o.id} o={o} onClick={() => (close(), openOrder(o.id))} />)}
+      <h2><Lnk onClick={() => openPartner(partnerId)}>{name}</Lnk></h2>
+      {st.data[0].map((o) => <OrderRow key={o.id} o={o} />)}
     </>
   )
 }
@@ -19,33 +20,27 @@ function PartnerDebt({ partnerId, name, close }) {
 export default function Debts() {
   const { period, openSheet } = useApp()
   const st = useData(['/debts?' + periodQS(period)])
-  const debts = st.data?.[0] || []
-  const group = (type, title, cls) => {
-    const rows = debts.filter((d) => d.type === type)
-    return (
-      <>
-        <h3>{title} <span className={cls}>{money(rows.reduce((s, r) => s + r.debt, 0))}</span></h3>
-        {rows.length ? (
-          rows.map((r) => (
-            <div className="item link" key={r.partner_id} onClick={() => openSheet((close) => <PartnerDebt partnerId={r.partner_id} name={r.partner_name} close={close} />)}>
-              <div className="row"><span className="t">{r.partner_name}</span><b className={cls}>{money(r.debt)}</b></div>
-              <small className="mut">{r.orders} đơn chưa thanh toán xong</small>
-            </div>
-          ))
-        ) : (
-          <div className="empty">Không có công nợ</div>
-        )}
-      </>
-    )
-  }
+  const rows = (st.data?.[0] || []).filter((d) => d.type === 'out')
   return (
     <>
       <PeriodBar />
       <Status state={st} />
       {st.data && (
         <>
-          {group('in', 'Phải trả nhà cung cấp', 'red')}
-          {group('out', 'Khách hàng nợ', 'grn')}
+          <div className="card sum">
+            <span>{rows.length} khách nợ · {periodLabel(period)}</span>
+            <b className="red">{money(rows.reduce((s, r) => s + r.debt, 0))}</b>
+          </div>
+          {rows.length ? (
+            rows.map((r) => (
+              <div className="item link" key={r.partner_id} onClick={() => openSheet(() => <CustomerDebt partnerId={r.partner_id} name={r.partner_name} />)}>
+                <div className="row"><span className="t">{r.partner_name}</span><b className="red nw">{money(r.debt)}</b></div>
+                <small className="mut">{r.orders} đơn chưa thanh toán xong</small>
+              </div>
+            ))
+          ) : (
+            <div className="empty">Không có công nợ</div>
+          )}
         </>
       )}
     </>

@@ -1,18 +1,22 @@
 import { api } from '../api'
 import { useApp, useData } from '../ctx'
-import { dt, money, num } from '../utils'
-import { Status } from './Bits.jsx'
+import { useLinks } from '../links'
+import { SHIP_STATUS, dt, money, num } from '../utils'
+import { Lnk, Status } from './Bits.jsx'
 import OrderForm from './OrderForm.jsx'
 import PaymentForm from './PaymentForm.jsx'
 
 export default function OrderDetail({ id, close }) {
   const { openSheet, reload, run } = useApp()
-  const st = useData([`/orders/${id}`])
+  const { openPartner, openProduct, openShipment } = useLinks()
+  const st = useData([`/orders/${id}`, { path: `/shipments?order_id=${id}`, optional: true }])
   if (!st.data) return <Status state={st} />
   const [o] = st.data
+  // Bảng vận chuyển có thể chưa được tạo: bỏ qua lỗi, chỉ ẩn mục này
+  const ships = st.data[1] || []
 
   const del = run(async () => {
-    if (!confirm('Xoá đơn và hoàn tồn kho?')) return
+    if (!confirm('Xoá đơn?')) return
     await api('/orders/' + id, 'DELETE')
     close()
     reload()
@@ -24,13 +28,17 @@ export default function OrderDetail({ id, close }) {
   })
   return (
     <>
-      <h2>{o.code} · {o.partner_name}</h2>
-      <div className="mut">{dt(o.order_date)}{o.note ? ' · ' + o.note : ''}</div>
+      <h2>{o.code}</h2>
+      <div className="row">
+        <b><Lnk onClick={() => openPartner(o.partner_id)}>{o.partner_name}</Lnk></b>
+        <span className="mut">{dt(o.order_date)}</span>
+      </div>
+      {o.note && <div className="mut">{o.note}</div>}
       <h3>Mặt hàng</h3>
       {o.items.length ? (
         o.items.map((i) => (
           <div className="row" key={i.id}>
-            <span>{i.products?.name} × {num(i.qty)} × {money(i.price)}</span>
+            <span><Lnk onClick={() => openProduct(i.product_id)}>{i.products?.name}</Lnk> × {num(i.qty)} × {money(i.price)}</span>
             <span>{money(i.qty * i.price)}</span>
           </div>
         ))
@@ -40,12 +48,29 @@ export default function OrderDetail({ id, close }) {
       <div className="row" style={{ marginTop: 8 }}><b>Tổng</b><b>{money(o.total)}</b></div>
       <div className="row"><span>Đã trả</span><span className="grn">{money(o.paid)}</span></div>
       <div className="row"><span>Còn nợ</span><b className="red">{money(o.debt)}</b></div>
+
+      <h3>Vận chuyển</h3>
+      {ships.length ? (
+        ships.map((s) => (
+          <div className="item link" key={s.id} onClick={() => openShipment(s, o)}>
+            <div className="row">
+              <span className="t">{s.vehicle || 'Chưa có xe'}{s.driver ? ' · ' + s.driver : ''}</span>
+              <span className={'badge ' + (s.status === 'delivered' ? '' : 'warn')}>{SHIP_STATUS[s.status]}</span>
+            </div>
+            <div className="row mut"><span>{dt(s.ship_date)}</span><span>Cước {money(s.fee)}</span></div>
+          </div>
+        ))
+      ) : (
+        <div className="mut">Chưa có chuyến xe</div>
+      )}
+      <button className="btn sec sm" style={{ marginTop: 6 }} onClick={() => openShipment(null, o)}>+ Thêm chuyến xe</button>
+
       <h3>Lịch sử thanh toán</h3>
       {o.payments.length ? (
         o.payments.map((p) => (
           <div className="row" style={{ marginBottom: 4 }} key={p.id}>
             <span>{dt(p.paid_at)}{p.note ? ' · ' + p.note : ''}</span>
-            <span>
+            <span className="nw">
               {money(p.amount)}{' '}
               <button className="btn sec sm" onClick={() => openSheet((c) => <PaymentForm order={o} pay={p} close={c} />)}>✎</button>{' '}
               <button className="btn sec sm" onClick={() => delPay(p.id)}>✕</button>

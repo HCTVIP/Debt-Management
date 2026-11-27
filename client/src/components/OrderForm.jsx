@@ -7,9 +7,9 @@ import { Status } from './Bits.jsx'
 /**
  * Thêm / sửa đơn. Đơn có mặt hàng: sửa từng dòng. Đơn không có mặt hàng (nợ đầu kỳ, điều chỉnh): sửa tổng tiền.
  */
-export default function OrderForm({ order, type: typeProp, close }) {
+export default function OrderForm({ order, close }) {
   const edit = !!order
-  const type = edit ? order.type : typeProp
+  const type = edit ? order.type : 'out'
   const st = useData([`/partners?type=${type === 'in' ? 'supplier' : 'customer'}`, '/products'])
   if (!st.data) return <Status state={st} />
   const [partners, products] = st.data
