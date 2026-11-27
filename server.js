@@ -9,6 +9,11 @@ import compression from 'compression'
 import { createClient } from '@supabase/supabase-js'
 import ws from 'ws'
 import ExcelJS from 'exceljs'
+import { createAuth, credentialsMatch } from './lib/auth.js'
+import { dbError, describeError } from './lib/errors.js'
+import { createFailureTracker, createLimiter } from './lib/limiter.js'
+import { resolveMapsLink } from './lib/mapsGuard.js'
+import { addDay, inPeriod, isDate, period } from './lib/period.js'
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET, APP_USERNAME = 'admin', GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_BROWSER_KEY, PORT = 3000 } = process.env
 for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_PASSWORD, TOKEN_SECRET })) {
@@ -17,6 +22,9 @@ for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, A
     process.exit(1)
   }
 }
+// Chỉ cảnh báo (không dừng) để không làm sập bản đang chạy nếu khoá hiện tại ngắn
+if (TOKEN_SECRET.length < 32) console.warn('Cảnh báo: TOKEN_SECRET nên là chuỗi ngẫu nhiên dài từ 32 ký tự trở lên')
+if (APP_PASSWORD.length < 10) console.warn('Cảnh báo: APP_PASSWORD nên dài từ 10 ký tự trở lên')
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false }, realtime: { transport: ws } })
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -42,63 +50,53 @@ app.use(
   })
 )
 app.use(compression())
-app.use('/api/products/:id/image', express.json({ limit: '3mb' })) // ảnh base64 đã thu nhỏ ở trình duyệt
-app.use('/api/shipments/:id/proofs', express.json({ limit: '3mb' }))
-app.use(express.json({ limit: '200kb' }))
 
 // ---- Auth: token = payload.hmac, hạn 7 ngày ----
-const sign = (s) => crypto.createHmac('sha256', TOKEN_SECRET).update(s).digest('base64url')
-const makeToken = (u) => {
-  const p = Buffer.from(JSON.stringify({ u, exp: Date.now() + 7 * 864e5 })).toString('base64url')
-  return `${p}.${sign(p)}`
-}
-const safeEq = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
-const verify = (t = '') => {
-  const [p, sig] = t.split('.')
-  if (!p || !sig || !safeEq(sig, sign(p))) return false
-  try {
-    return JSON.parse(Buffer.from(p, 'base64url').toString()).exp > Date.now()
-  } catch {
-    return false
-  }
-}
-const auth = (req, res, next) =>
-  verify((req.headers.authorization || '').replace('Bearer ', '')) ? next() : res.status(401).json({ error: 'Chưa đăng nhập' })
-
-const fails = new Map()
+const { makeToken, middleware: auth } = createAuth({ secret: TOKEN_SECRET })
+const loginFails = createFailureTracker({ max: 10, windowMs: 15 * 60e3 })
+// Đăng nhập đứng TRƯỚC xác thực nên chỉ nhận body rất nhỏ
+app.use('/api/login', express.json({ limit: '2kb' }))
 app.post('/api/login', (req, res) => {
   const ip = req.ip
-  const f = fails.get(ip) || { n: 0, t: Date.now() }
-  if (Date.now() - f.t > 15 * 60e3) Object.assign(f, { n: 0, t: Date.now() })
-  if (f.n >= 10) return res.status(429).json({ error: 'Thử lại sau 15 phút' })
-  const user = String(req.body?.username ?? '').trim()
-  const pw = String(req.body?.password ?? '')
-  const h = (x) => crypto.createHash('sha256').update(x).digest('hex')
-  // so sánh cả hai để không lộ tài khoản hay mật khẩu nào đúng
-  const okUser = safeEq(h(user.toLowerCase()), h(APP_USERNAME.toLowerCase()))
-  const okPw = safeEq(h(pw), h(APP_PASSWORD))
-  if (!(okUser && okPw)) {
-    fails.set(ip, { ...f, n: f.n + 1 })
+  if (loginFails.blocked(ip)) return res.status(429).json({ error: 'Thử lại sau 15 phút' })
+  if (!credentialsMatch(req.body?.username ?? '', req.body?.password ?? '', APP_USERNAME, APP_PASSWORD)) {
+    loginFails.fail(ip)
     return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' })
   }
-  fails.delete(ip)
+  loginFails.clear(ip)
   res.json({ token: makeToken(APP_USERNAME) })
 })
 
 app.get('/healthz', (_q, r) => r.send('ok'))
 app.use('/api', auth)
+app.use('/api', createLimiter({ max: 600, windowMs: 60e3 }))
+// Body JSON chỉ được đọc SAU khi đã xác thực (người chưa đăng nhập không buộc server parse tới 3 MB)
+app.use('/api/products/:id/image', express.json({ limit: '3mb' })) // ảnh base64 đã thu nhỏ ở trình duyệt
+app.use('/api/shipments/:id/proofs', express.json({ limit: '3mb' }))
+app.use('/api', express.json({ limit: '200kb' }))
 
 const wrap = (fn) => async (req, res) => {
   try {
     const data = await fn(req)
     res.json(data ?? { ok: true })
   } catch (e) {
-    res.status(e.status || 400).json({ error: e.message || 'Lỗi' })
+    sendError(req, res, e)
   }
 }
+const sendError = (req, res, e) => {
+  const { status, body, log } = describeError(e)
+  if (log) console.error('[api]', req.method, req.path, e.code || '', e.message)
+  res.status(status).json(body)
+}
 const ok = ({ data, error }) => {
-  if (error) throw new Error(error.message)
+  if (error) throw dbError(error)
   return data
+}
+/** Gọi hàm SQL (supabase/005_integrity.sql). */
+const rpc = async (fn, args) => ok(await db.rpc(fn, args))
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const needUuid = (v, msg = 'Mã không hợp lệ') => {
+  if (!UUID.test(String(v))) throw new Error(msg)
 }
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]))
 const need = (v, msg) => {
@@ -108,11 +106,17 @@ const need = (v, msg) => {
 // ---- CRUD đối tác / hàng hóa ----
 // ---- Ảnh hàng hóa: Supabase Storage (bucket public), tên file = id hàng hóa, không cần thêm cột ----
 const BUCKET = 'product-images'
-db.storage
-  .createBucket(BUCKET, { public: true, fileSizeLimit: 2 * 1024 * 1024, allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'] })
-  .then(({ error }) => {
-    if (error && !/already exists/i.test(error.message)) console.error('Storage:', error.message)
-  })
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+// Tạo bucket nếu chưa có; đã có thì cập nhật lại cấu hình (để bucket cũ cũng theo đúng public / private)
+const ensureBucket = async (name, opts) => {
+  const created = await db.storage.createBucket(name, opts)
+  if (!created.error) return
+  if (!/already exists/i.test(created.error.message)) throw created.error
+  const { error } = await db.storage.updateBucket(name, opts)
+  if (error) throw error
+}
+const bucketReady = (name, opts) => ensureBucket(name, opts).catch((e) => console.error('Storage:', name, e.message))
+bucketReady(BUCKET, { public: true, fileSizeLimit: 2 * 1024 * 1024, allowedMimeTypes: IMAGE_TYPES }) // ảnh hàng hóa: không nhạy cảm
 const imageMap = async () => {
   const { data, error } = await db.storage.from(BUCKET).list('', { limit: 1000 })
   if (error) return new Map()
@@ -124,6 +128,7 @@ const withImages = async (rows) => {
   return rows
 }
 app.put('/api/products/:id/image', wrap(async (req) => {
+  needUuid(req.params.id)
   const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data || ''))
   if (!m) throw new Error('Ảnh không hợp lệ (chỉ JPEG, PNG hoặc WebP)')
   const buf = Buffer.from(m[2], 'base64')
@@ -133,6 +138,7 @@ app.put('/api/products/:id/image', wrap(async (req) => {
   if (error) throw new Error(error.message)
 }))
 app.delete('/api/products/:id/image', wrap(async (req) => {
+  needUuid(req.params.id)
   const { error } = await db.storage.from(BUCKET).remove([req.params.id])
   if (error) throw new Error(error.message)
 }))
@@ -144,7 +150,7 @@ const crud = (route, table, fields, order, validate) => {
     const rows = ok(await q)
     // ?debt=1: kèm tổng nợ còn lại của từng đối tác
     if (route === 'partners' && req.query.debt === '1') {
-      const os = await fetchAll(() => db.from('order_summary').select('partner_id, debt').gt('debt', 0).order('code'))
+      const os = await fetchAll(() => db.from('order_summary').select('partner_id, debt').gt('debt', 0).order('id'))
       const d = new Map()
       for (const o of os) d.set(o.partner_id, (d.get(o.partner_id) || 0) + Number(o.debt))
       for (const r of rows) r.debt = d.get(r.id) || 0
@@ -152,6 +158,7 @@ const crud = (route, table, fields, order, validate) => {
     return route === 'products' ? withImages(rows) : rows
   }))
   app.get(`/api/${route}/:id`, wrap(async (req) => {
+    needUuid(req.params.id)
     const row = ok(await db.from(table).select('*').eq('id', req.params.id).single())
     return route === 'products' ? withImages(row) : row
   }))
@@ -161,11 +168,13 @@ const crud = (route, table, fields, order, validate) => {
     return ok(await db.from(table).insert(b).select().single())
   }))
   app.put(`/api/${route}/:id`, wrap(async (req) => {
+    needUuid(req.params.id)
     const b = pick(req.body, fields)
     validate(b)
     return ok(await db.from(table).update(b).eq('id', req.params.id).select().single())
   }))
   app.delete(`/api/${route}/:id`, wrap(async (req) => {
+    needUuid(req.params.id)
     const { error } = await db.from(table).delete().eq('id', req.params.id)
     if (error) throw new Error(error.code === '23503' ? 'Đã có đơn hàng liên quan, không thể xoá' : error.message)
     if (route === 'products') await db.storage.from(BUCKET).remove([req.params.id]) // xoá luôn ảnh
@@ -179,33 +188,9 @@ crud('products', 'products', ['name', 'unit', 'cost_price', 'sale_price', 'stock
   need(b.name, 'Nhập tên hàng')
   for (const k of ['cost_price', 'sale_price', 'stock', 'min_stock']) if (b[k] !== undefined && !(Number(b[k]) >= 0)) throw new Error('Số không hợp lệ')
   if (b.supplier_id === '') b.supplier_id = null
+  if (b.supplier_id) needUuid(b.supplier_id, 'Nhà cung cấp không hợp lệ')
 })
 
-// ---- Lọc theo kỳ: month=YYYY-MM hoặc year=YYYY (bỏ trống = tất cả) ----
-const period = (query) => {
-  const { month, year, from, to } = query
-  if (from || to) {
-    const okDate = (d) => /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(d) && !Number.isNaN(Date.parse(d + 'T00:00:00Z'))
-    if ((from && !okDate(from)) || (to && !okDate(to))) throw new Error('Ngày không hợp lệ')
-    if (from && to && from > to) throw new Error('Từ ngày phải trước đến ngày')
-    // "đến ngày" tính cả ngày đó
-    const next = to ? new Date(Date.parse(to + 'T00:00:00Z') + 864e5).toISOString().slice(0, 10) : '9999-12-31'
-    return { from: from || '0001-01-01', to: next }
-  }
-  if (month) {
-    if (!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Tháng không hợp lệ')
-    const [y, m] = month.split('-').map(Number)
-    const ny = m === 12 ? y + 1 : y
-    const nm = m === 12 ? 1 : m + 1
-    return { from: `${month}-01`, to: `${ny}-${String(nm).padStart(2, '0')}-01` }
-  }
-  if (year) {
-    if (!/^[0-9]{4}$/.test(year)) throw new Error('Năm không hợp lệ')
-    return { from: `${year}-01-01`, to: `${Number(year) + 1}-01-01` }
-  }
-  return null
-}
-const inPeriod = (q, p, col = 'order_date') => (p ? q.gte(col, p.from).lt(col, p.to) : q)
 // Supabase giới hạn 1000 dòng / lần: lấy hết theo trang
 const fetchAll = async (build) => {
   const out = []
@@ -222,7 +207,7 @@ app.get('/api/orders', wrap(async (req) => {
   const limit = Math.min(Number(req.query.limit) || 0, 200)
   const run = limit ? async (b) => ok(await b().range(0, limit - 1)) : fetchAll
   return run(() => {
-    let q = db.from('order_summary').select('*').order('order_date', { ascending: false }).order('code', { ascending: false })
+    let q = db.from('order_summary').select('*').order('order_date', { ascending: false }).order('code', { ascending: false }).order('id', { ascending: false })
     if (req.query.type) q = q.eq('type', req.query.type)
     if (req.query.partner_id) q = q.eq('partner_id', req.query.partner_id)
     if (req.query.open === '1') q = q.gt('debt', 0)
@@ -231,8 +216,15 @@ app.get('/api/orders', wrap(async (req) => {
     return inPeriod(q, p)
   })
 }))
+/** Danh sách mặt hàng của đơn: đúng cấu trúc, SL > 0, giá >= 0. */
+const orderItems = (raw) => {
+  const items = (Array.isArray(raw) ? raw : []).map((i) => ({ product_id: i?.product_id, qty: Number(i?.qty), price: Number(i?.price) }))
+  if (!items.length || items.some((i) => !UUID.test(String(i.product_id)) || !(i.qty > 0) || !(i.price >= 0))) throw new Error('Mặt hàng không hợp lệ')
+  return items
+}
 app.get('/api/orders/:id', wrap(async (req) => {
   const id = req.params.id
+  needUuid(id)
   const [o, items, pays] = await Promise.all([
     db.from('order_summary').select('*').eq('id', id).single(),
     db.from('order_items').select('*, products(name, unit)').eq('order_id', id),
@@ -243,68 +235,55 @@ app.get('/api/orders/:id', wrap(async (req) => {
 app.post('/api/orders', wrap(async (req) => {
   const b = req.body
   need(b.partner_id, 'Chọn đối tác')
-  const items = (b.items || []).map((i) => ({ product_id: i.product_id, qty: Number(i.qty), price: Number(i.price) }))
-  if (!items.length || items.some((i) => !i.product_id || !(i.qty > 0) || !(i.price >= 0))) throw new Error('Mặt hàng không hợp lệ')
-  const id = ok(await db.rpc('create_order', { p: { ...pick(b, ['type', 'partner_id', 'order_date', 'note']), paid: Number(b.paid) || 0, items } }))
+  needUuid(b.partner_id, 'Đối tác không hợp lệ')
+  const items = orderItems(b.items)
+  const id = await rpc('create_order', { p: { type: b.type, partner_id: b.partner_id, order_date: dateOrNull(b.order_date), note: noteOrNull(b.note), paid: Number(b.paid) || 0, items } })
   return { id }
 }))
-// Sửa đơn: đơn có mặt hàng thì thay toàn bộ mặt hàng (tồn kho điều chỉnh theo chênh lệch);
-// đơn không có mặt hàng (nợ đầu kỳ / điều chỉnh) thì sửa trực tiếp tổng tiền.
-// Lưu ý: không nằm trong 1 transaction, thêm mặt hàng mới trước rồi mới xoá mặt hàng cũ để không mất dữ liệu nếu lỗi giữa chừng.
+// Sửa đơn chạy trong 1 transaction của hàm SQL update_order (khoá dòng đơn, tồn kho điều chỉnh nguyên tử):
+// đơn có mặt hàng thì thay toàn bộ mặt hàng; đơn không có mặt hàng (nợ đầu kỳ / điều chỉnh) thì sửa trực tiếp tổng tiền.
 app.put('/api/orders/:id', wrap(async (req) => {
-  const id = req.params.id
+  needUuid(req.params.id)
   const b = req.body
   need(b.partner_id, 'Chọn đối tác')
-  const old = ok(await db.from('order_summary').select('*').eq('id', id).single())
-  const partner = ok(await db.from('partners').select('type').eq('id', b.partner_id).single())
-  if (partner.type !== (old.type === 'in' ? 'supplier' : 'customer')) throw new Error('Đối tác không đúng loại của đơn')
-  const oldItems = ok(await db.from('order_items').select('id, product_id, qty').eq('order_id', id))
-  const upd = { partner_id: b.partner_id, order_date: b.order_date || old.order_date, note: b.note || null }
-  let newItems = null
-  if (oldItems.length) {
-    newItems = (b.items || []).map((i) => ({ order_id: id, product_id: i.product_id, qty: Number(i.qty), price: Number(i.price) }))
-    if (!newItems.length || newItems.some((i) => !i.product_id || !(i.qty > 0) || !(i.price >= 0))) throw new Error('Mặt hàng không hợp lệ')
-    upd.total = newItems.reduce((s, i) => s + i.qty * i.price, 0)
-  } else {
-    upd.total = Number(b.total)
-    if (!(upd.total >= 0)) throw new Error('Tổng tiền không hợp lệ')
+  needUuid(b.partner_id, 'Đối tác không hợp lệ')
+  const p = { partner_id: b.partner_id, order_date: dateOrNull(b.order_date), note: noteOrNull(b.note) }
+  if (b.items !== undefined) p.items = orderItems(b.items)
+  if (b.total !== undefined) {
+    p.total = Number(b.total)
+    if (!(p.total >= 0)) throw new Error('Tổng tiền không hợp lệ')
   }
-  if (upd.total + 0.5 < Number(old.paid)) throw new Error('Tổng đơn nhỏ hơn số tiền đã thanh toán, hãy sửa thanh toán trước')
-  if (newItems) {
-    ok(await db.from('order_items').insert(newItems))
-    ok(await db.from('order_items').delete().in('id', oldItems.map((i) => i.id)))
-    const sign = old.type === 'in' ? 1 : -1
-    const delta = new Map()
-    for (const i of newItems) delta.set(i.product_id, (delta.get(i.product_id) || 0) + sign * i.qty)
-    for (const i of oldItems) delta.set(i.product_id, (delta.get(i.product_id) || 0) - sign * Number(i.qty))
-    for (const [pid, d] of delta) {
-      if (!d) continue
-      const pr = ok(await db.from('products').select('stock').eq('id', pid).single())
-      ok(await db.from('products').update({ stock: Number(pr.stock) + d }).eq('id', pid))
-    }
-  }
-  ok(await db.from('orders').update(upd).eq('id', id))
-  return { id }
+  await rpc('update_order', { oid: req.params.id, p })
+  return { id: req.params.id }
 }))
+/** Ngày YYYY-MM-DD hoặc null (bỏ trống = để DB dùng ngày hôm nay theo giờ Việt Nam). */
+const dateOrNull = (v) => {
+  if (v === undefined || v === null || v === '') return null
+  if (!isDate(String(v))) throw new Error('Ngày không hợp lệ')
+  return String(v)
+}
+const noteOrNull = (v) => String(v ?? '').trim().slice(0, 500) || null
+const payRow = async (id) => ok(await db.from('payments').select('*').eq('id', id).single())
 app.put('/api/payments/:id', wrap(async (req) => {
-  const pay = ok(await db.from('payments').select('*').eq('id', req.params.id).single())
+  needUuid(req.params.id)
   const amount = Number(req.body.amount)
   if (!(amount > 0)) throw new Error('Số tiền không hợp lệ')
-  const o = ok(await db.from('order_summary').select('total, paid').eq('id', pay.order_id).single())
-  if (Number(o.paid) - Number(pay.amount) + amount > Number(o.total) + 0.5) throw new Error('Số tiền vượt tổng đơn')
-  return ok(await db.from('payments').update({ amount, paid_at: req.body.paid_at || pay.paid_at, note: req.body.note || null }).eq('id', pay.id).select().single())
+  await rpc('update_payment', { pid: req.params.id, amt: amount, d: dateOrNull(req.body.paid_at), n: noteOrNull(req.body.note) })
+  return payRow(req.params.id)
 }))
 app.delete('/api/orders/:id', wrap(async (req) => {
-  ok(await db.rpc('delete_order', { oid: req.params.id }))
+  needUuid(req.params.id)
+  await rpc('delete_order', { oid: req.params.id })
 }))
 app.post('/api/orders/:id/payments', wrap(async (req) => {
+  needUuid(req.params.id)
   const amount = Number(req.body.amount)
   if (!(amount > 0)) throw new Error('Số tiền không hợp lệ')
-  const o = ok(await db.from('order_summary').select('debt').eq('id', req.params.id).single())
-  if (amount > Number(o.debt)) throw new Error('Số tiền vượt công nợ còn lại')
-  return ok(await db.from('payments').insert({ order_id: req.params.id, amount, paid_at: req.body.paid_at || undefined, note: req.body.note }).select().single())
+  const id = await rpc('add_payment', { oid: req.params.id, amt: amount, d: dateOrNull(req.body.paid_at), n: noteOrNull(req.body.note) })
+  return payRow(id)
 }))
 app.delete('/api/payments/:id', wrap(async (req) => {
+  needUuid(req.params.id)
   ok(await db.from('payments').delete().eq('id', req.params.id))
 }))
 
@@ -412,6 +391,8 @@ const geoResults = (j) => {
 }
 // Tìm địa chỉ / đường đi: dùng Google Maps Platform khi có khoá; chưa có khoá thì dùng OpenStreetMap (Nominatim + OSRM, miễn phí, không cần khoá)
 const mapsProvider = () => (GOOGLE_MAPS_API_KEY ? 'google' : 'osm')
+// Mỗi lần tìm địa chỉ / tính đường đi có thể tốn quota Google hoặc bị OpenStreetMap giới hạn
+app.use('/api/maps', createLimiter({ max: 60, windowMs: 60e3 }))
 // browserKey: khoá riêng cho trình duyệt (giới hạn theo tên miền) để hiện bản đồ Google; không có thì dùng bản đồ OpenStreetMap
 app.get('/api/maps/status', wrap(async () => ({ enabled: !!GOOGLE_MAPS_API_KEY, provider: mapsProvider(), browserKey: GOOGLE_MAPS_BROWSER_KEY || null })))
 
@@ -491,53 +472,45 @@ app.get('/api/maps/route', wrap(async (req) => {
   }
   return { distance_km: Math.round(haversineKm(a, b) * 100) / 100, duration_min: null, method: 'straight', warning: warnings.join('; ') }
 }))
-// Link rút gọn của Google Maps (maps.app.goo.gl...) -> link đầy đủ có toạ độ. Chỉ cho phép đúng tên miền Google để tránh bị lợi dụng gọi URL tuỳ ý.
-const MAPS_HOSTS = ['maps.app.goo.gl', 'goo.gl', 'google.com', 'www.google.com', 'maps.google.com']
-app.get('/api/maps/resolve', wrap(async (req) => {
-  let u
-  try {
-    u = new URL(String(req.query.url || ''))
-  } catch {
-    throw new Error('Link không hợp lệ')
-  }
-  if (u.protocol !== 'https:' || !MAPS_HOSTS.includes(u.hostname)) throw new Error('Chỉ hỗ trợ link Google Maps')
-  const r = await fetch(u, { redirect: 'follow', signal: AbortSignal.timeout(8000) })
-  const final = new URL(r.url)
-  if (!MAPS_HOSTS.includes(final.hostname)) throw new Error('Link không hợp lệ')
-  return { url: final.href }
-}))
+// Link rút gọn của Google Maps (maps.app.goo.gl...) -> link đầy đủ có toạ độ. Từng bước chuyển hướng đều được kiểm
+// tên miền Google TRƯỚC khi gọi (lib/mapsGuard.js) để không bị lợi dụng gọi URL tuỳ ý.
+app.get('/api/maps/resolve', wrap((req) => resolveMapsLink(req.query.url)))
 
-// ---- Ảnh xác nhận giao hàng: Supabase Storage (bucket delivery-proofs), thư mục = id chuyến xe ----
+// ---- Ảnh xác nhận giao hàng: Supabase Storage (bucket delivery-proofs, RIÊNG TƯ), thư mục = id chuyến xe ----
+// Ảnh có thể chứa người và địa chỉ khách nên bucket không công khai: mỗi lần xem server cấp đường dẫn tạm (signed URL).
 const PROOF_BUCKET = 'delivery-proofs'
-db.storage
-  .createBucket(PROOF_BUCKET, { public: true, fileSizeLimit: 2 * 1024 * 1024, allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'] })
-  .then(({ error }) => {
-    if (error && !/already exists/i.test(error.message)) console.error('Storage:', error.message)
-  })
-const UUID = /^[0-9a-f-]{36}$/i
-const proofUrl = (id, name) => `${SUPABASE_URL}/storage/v1/object/public/${PROOF_BUCKET}/${id}/${name}`
+const PROOF_URL_TTL = 60 * 60 // giây
+bucketReady(PROOF_BUCKET, { public: false, fileSizeLimit: 2 * 1024 * 1024, allowedMimeTypes: IMAGE_TYPES })
+const signedProofs = async (id, names) => {
+  if (!names.length) return []
+  const { data, error } = await db.storage.from(PROOF_BUCKET).createSignedUrls(names.map((n) => `${id}/${n}`), PROOF_URL_TTL)
+  if (error) throw dbError(error)
+  return names.map((name, i) => ({ name, url: data[i]?.signedUrl || null }))
+}
 app.get('/api/shipments/:id/proofs', wrap(async (req) => {
-  if (!UUID.test(req.params.id)) throw new Error('Mã chuyến không hợp lệ')
+  needUuid(req.params.id, 'Mã chuyến không hợp lệ')
   const { data, error } = await db.storage.from(PROOF_BUCKET).list(req.params.id, { limit: 50, sortBy: { column: 'name', order: 'asc' } })
-  if (error) throw new Error(error.message)
-  return data.filter((f) => f.id).map((f) => ({ name: f.name, url: proofUrl(req.params.id, f.name) }))
+  if (error) throw dbError(error)
+  return signedProofs(req.params.id, data.filter((f) => f.id).map((f) => f.name))
 }))
 app.post('/api/shipments/:id/proofs', wrap(async (req) => {
-  if (!UUID.test(req.params.id)) throw new Error('Mã chuyến không hợp lệ')
+  needUuid(req.params.id, 'Mã chuyến không hợp lệ')
   const m = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data || ''))
   if (!m) throw new Error('Ảnh không hợp lệ (chỉ JPEG, PNG hoặc WebP)')
   const buf = Buffer.from(m[2], 'base64')
   if (buf.length > 2 * 1024 * 1024) throw new Error('Ảnh quá lớn (tối đa 2MB)')
   ok(await db.from('shipments').select('id').eq('id', req.params.id).single())
-  const name = `${Date.now()}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`
+  // Số ngẫu nhiên đi kèm thời gian: hai ảnh tải lên cùng một mili giây không đè nhau
+  const name = `${Date.now()}${crypto.randomInt(100, 1000)}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`
   const { error } = await db.storage.from(PROOF_BUCKET).upload(`${req.params.id}/${name}`, buf, { contentType: 'image/' + m[1], cacheControl: '3600' })
-  if (error) throw new Error(error.message)
-  return { name, url: proofUrl(req.params.id, name) }
+  if (error) throw dbError(error)
+  return (await signedProofs(req.params.id, [name]))[0]
 }))
 app.delete('/api/shipments/:id/proofs/:name', wrap(async (req) => {
-  if (!UUID.test(req.params.id) || !/^[0-9]+\.(jpg|png|webp)$/.test(req.params.name)) throw new Error('Tham số không hợp lệ')
+  needUuid(req.params.id, 'Tham số không hợp lệ')
+  if (!/^[0-9]+\.(jpg|png|webp)$/.test(req.params.name)) throw new Error('Tham số không hợp lệ')
   const { error } = await db.storage.from(PROOF_BUCKET).remove([`${req.params.id}/${req.params.name}`])
-  if (error) throw new Error(error.message)
+  if (error) throw dbError(error)
 }))
 
 // ---- Xuất Excel theo kỳ: mỗi khách hàng một sheet, bố cục giống file "Công nợ 2026.xlsx" ----
@@ -557,8 +530,7 @@ const sheetName = (name, used) => {
   used.add(n.toLowerCase())
   return n
 }
-const addDay = (d, k) => new Date(Date.parse(d + 'T00:00:00Z') + k * 864e5).toISOString().slice(0, 10)
-const dmy = (d) => `${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}`
+const dmy =(d) => `${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}`
 const monthsBetween = (from, to) => {
   const out = []
   let y = Number(from.slice(0, 4))
@@ -732,23 +704,15 @@ app.get('/api/export/excel', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="cong-no_${from}_${to}.xlsx"`)
     res.send(Buffer.from(buf))
   } catch (e) {
-    res.status(400).json({ error: e.message || 'Không xuất được Excel' })
+    sendError(req, res, e)
   }
 })
 
-// ---- Công nợ theo đối tác + tổng quan ----
+// ---- Công nợ theo đối tác (tổng hợp trong DB: hàm SQL debts_by_partner) ----
+const periodArgs = (per) => ({ p_from: per ? per.from : null, p_to: per ? per.to : null })
 app.get('/api/debts', wrap(async (req) => {
-  const p = period(req.query)
-  const rows = await fetchAll(() => inPeriod(db.from('order_summary').select('partner_id, partner_name, type, debt').gt('debt', 0).order('partner_id').order('code'), p))
-  const m = new Map()
-  for (const r of rows) {
-    const k = `${r.partner_id}`
-    const x = m.get(k) || { partner_id: r.partner_id, partner_name: r.partner_name, type: r.type, debt: 0, orders: 0 }
-    x.debt += Number(r.debt)
-    x.orders++
-    m.set(k, x)
-  }
-  return [...m.values()].sort((a, b) => b.debt - a.debt)
+  const rows = await rpc('debts_by_partner', periodArgs(period(req.query)))
+  return rows.map((r) => ({ ...r, debt: Number(r.debt), orders: Number(r.orders) }))
 }))
 // ---- Thu chi: khoản thu khác / chi (bảng cashflow). Khoản thu từ khách lấy từ bảng thanh toán ----
 const CASH_KINDS = ['in', 'out']
@@ -803,83 +767,8 @@ app.get('/api/ledger', wrap(async (req) => {
   return { items, totals: { in: sum('in'), out: sum('out'), balance: sum('in') - sum('out') }, cashflow_ready: cashReady }
 }))
 
-// ---- Tổng quan: số liệu + dữ liệu vẽ biểu đồ theo kỳ ----
-app.get('/api/dashboard', wrap(async (req) => {
-  const per = period(req.query)
-  const optional = async (fn) => {
-    try {
-      return await fn()
-    } catch {
-      return []
-    }
-  }
-  const [o, pays, items, cash, prods, custCount] = await Promise.all([
-    fetchAll(() => inPeriod(db.from('order_summary').select('partner_id, partner_name, type, total, paid, debt, order_date').order('code'), per)),
-    fetchAll(() => inPeriod(db.from('payments').select('amount, paid_at, orders!inner(type)').order('id'), per, 'paid_at')),
-    fetchAll(() => {
-      let q = db.from('order_items').select('qty, price, products(name), orders!inner(order_date, type)').order('id')
-      if (per) q = q.gte('orders.order_date', per.from).lt('orders.order_date', per.to)
-      return q
-    }),
-    optional(() => fetchAll(() => inPeriod(db.from('cashflow').select('kind, amount, entry_date').order('id'), per, 'entry_date'))),
-    db.from('products').select('id, name, unit, stock, min_stock, cost_price'),
-    db.from('partners').select('id', { count: 'exact', head: true }).eq('type', 'customer')
-  ])
-  const p = ok(prods)
-  const by = (t, f) => o.filter((x) => x.type === t).reduce((s, x) => s + Number(x[f]), 0)
-  const paid = (t) => pays.filter((x) => x.orders?.type === t).reduce((s, x) => s + Number(x.amount), 0)
-  const cashSum = (k) => cash.filter((c) => c.kind === k).reduce((s, c) => s + Number(c.amount), 0)
-
-  // Chuỗi thời gian: theo ngày nếu kỳ <= 45 ngày, ngược lại theo tháng
-  const dates = [...o.map((x) => x.order_date), ...pays.map((x) => x.paid_at), ...cash.map((x) => x.entry_date)].sort()
-  const first = per ? per.from : dates[0]
-  const lastEx = per ? per.to : dates.at(-1)
-  const spanDays = first && lastEx ? (Date.parse(lastEx) - Date.parse(first)) / 864e5 : 0
-  const monthly = spanDays > 45
-  const keyOf = (d) => (monthly ? d.slice(0, 7) : d)
-  const series = new Map()
-  const slot = (d) => {
-    const k = keyOf(d)
-    if (!series.has(k)) series.set(k, { key: k, sold: 0, collected: 0, spent: 0 })
-    return series.get(k)
-  }
-  for (const x of o) if (x.type === 'out') slot(x.order_date).sold += Number(x.total)
-  for (const x of pays) if (x.orders?.type === 'out') slot(x.paid_at).collected += Number(x.amount)
-  for (const x of cash) if (x.kind === 'out') slot(x.entry_date).spent += Number(x.amount)
-
-  const top = (map, n = 5) => [...map.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.value - a.value).slice(0, n)
-  const cust = new Map()
-  for (const x of o.filter((x) => x.type === 'out')) {
-    const c = cust.get(x.partner_name) || { value: 0, debt: 0 }
-    c.value += Number(x.total)
-    c.debt += Number(x.debt)
-    cust.set(x.partner_name, c)
-  }
-  const prod = new Map()
-  for (const x of items.filter((x) => x.orders?.type === 'out')) {
-    const k = x.products?.name || '---'
-    const c = prod.get(k) || { value: 0 }
-    c.value += Number(x.qty) * Number(x.price)
-    prod.set(k, c)
-  }
-  return {
-    payable: by('in', 'debt'),
-    receivable: by('out', 'debt'),
-    purchased: by('in', 'total'),
-    sold: by('out', 'total'),
-    collected: paid('out'),
-    paid_out: paid('in'),
-    customers: custCount.count || 0,
-    other_in: cashSum('in'),
-    spent: cashSum('out'),
-    stock_value: p.reduce((s, x) => s + Number(x.stock) * Number(x.cost_price), 0),
-    low_stock: p.filter((x) => Number(x.stock) <= Number(x.min_stock)),
-    group: monthly ? 'month' : 'day',
-    series: [...series.values()].sort((a, b) => a.key.localeCompare(b.key)),
-    top_customers: top(cust),
-    top_products: top(prod)
-  }
-}))
+// ---- Tổng quan: số liệu + dữ liệu vẽ biểu đồ theo kỳ (tổng hợp trong DB: hàm SQL dashboard_data) ----
+app.get('/api/dashboard', wrap(async (req) => rpc('dashboard_data', periodArgs(period(req.query)))))
 
 app.use('/api', (_q, r) => r.status(404).json({ error: 'Không tìm thấy' }))
 // Giao diện React đã build (`npm run build` -> dist). File trong /assets có hash nên cache lâu; index.html thì không cache.
@@ -892,4 +781,16 @@ if (fs.existsSync(dist)) {
   app.get('*', (_q, r) => r.status(503).send('Chưa build giao diện: chạy `npm run build`'))
 }
 
-app.listen(PORT, () => console.log(`Server chạy tại cổng ${PORT}`))
+// Lỗi chưa bắt được (ví dụ mạng tới Supabase đứt giữa chừng): ghi log, không làm sập cả tiến trình
+process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e?.message || e))
+app.use((e, req, res, _next) => sendError(req, res, e)) // lỗi đồng bộ trong middleware (ví dụ JSON sai cú pháp)
+
+const server = app.listen(PORT, () => console.log(`Server chạy tại cổng ${PORT}`))
+// Nhận SIGTERM / SIGINT (deploy, dừng container): ngừng nhận kết nối mới, chờ các yêu cầu đang chạy xong rồi thoát
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    console.log(`Nhận ${sig}, đang tắt server...`)
+    server.close(() => process.exit(0))
+    setTimeout(() => process.exit(1), 10000).unref()
+  })
+}
