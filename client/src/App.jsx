@@ -26,6 +26,21 @@ const TABS = [
 // Mở địa chỉ có ?debug=1 để hiện hộp chẩn đoán kích thước màn hình
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1'
 
+/**
+ * Đưa bố cục về trạng thái không có bàn phím: bỏ biến vùng nhìn thấy, bỏ class kb và cuộn trang về 0.
+ * Cần sau khi đăng nhập bằng trình quản lý mật khẩu của điện thoại: iPhone tự cuộn trang để lộ ô mật khẩu,
+ * rồi ô đó biến mất cùng màn đăng nhập mà không có sự kiện rời ô, làm trang bị lệch (mất header, chạm tab không ăn).
+ */
+export function resetViewport() {
+  const el = document.documentElement
+  el.classList.remove('kb')
+  el.style.removeProperty('--vvh')
+  el.style.removeProperty('--vvt')
+  if (window.scrollX || window.scrollY) window.scrollTo(0, 0)
+  if (document.scrollingElement && document.scrollingElement.scrollTop) document.scrollingElement.scrollTop = 0
+  if (document.body.scrollTop) document.body.scrollTop = 0
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken())
   const [tab, setTab] = useState('home')
@@ -41,6 +56,7 @@ export default function App() {
     setToken(null)
     setAuthed(false)
     setSheets([])
+    setTimeout(resetViewport, 50)
   }, [])
   useEffect(() => setUnauthorizedHandler(logout), [logout])
   // Xuất Excel công nợ theo bộ lọc đang áp dụng ở Tổng quan (mỗi khách hàng một sheet)
@@ -81,8 +97,7 @@ export default function App() {
         // Bàn phím vừa mở / đóng khi đang nhập: đưa ô đang nhập vào giữa vùng nhìn thấy
         setTimeout(() => center(document.activeElement), 50)
       } else {
-        root.removeProperty('--vvh')
-        root.removeProperty('--vvt')
+        resetViewport()
       }
     }
     sync()
@@ -152,7 +167,14 @@ export default function App() {
   if (!authed) {
     return (
       <Ctx.Provider value={ctx}>
-        <Login onDone={() => setAuthed(true)} />
+        <Login
+          onDone={() => {
+            setAuthed(true)
+            // sau khi trình duyệt đóng bàn phím / thanh gợi ý mật khẩu: đưa trang về đúng vị trí (2 lần vì bàn phím đóng có độ trễ)
+            setTimeout(resetViewport, 50)
+            setTimeout(resetViewport, 600)
+          }}
+        />
         <LoadingLayer />
         {DEBUG && <DebugBox />}
         {toastMsg && <div className="toast">{toastMsg}</div>}

@@ -368,3 +368,5 @@ html,body,#root{height:100%}
 .loginwrap{position:fixed;top:0;bottom:0;left:0;right:0;height:auto}
 /* Bàn phím đang mở: màn đăng nhập theo vùng nhìn thấy để ô nhập không bị che */
 html.kb .loginwrap{bottom:auto;top:var(--vvt,0px);height:var(--vvh,100%)}
+/* Nút mắt canh giữa ô mật khẩu theo chiều dọc (lề của ô nhập có thể tràn ra ngoài khung nên không dùng top cố định) */
+.pwfield .eye{top:50%;transform:translateY(-50%)}
