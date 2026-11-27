@@ -7,21 +7,23 @@ import Home from './views/Home.jsx'
 import Orders from './views/Orders.jsx'
 import Debts from './views/Debts.jsx'
 import Products from './views/Products.jsx'
-import Partners from './views/Partners.jsx'
+import Customers from './views/Customers.jsx'
+import Shipments from './views/Shipments.jsx'
 
 const TABS = [
   ['home', '📊', 'Tổng quan', Home],
   ['orders', '🧾', 'Đơn hàng', Orders],
+  ['shipping', '🚚', 'Vận chuyển', Shipments],
   ['debts', '💰', 'Công nợ', Debts],
   ['products', '📦', 'Hàng hóa', Products],
-  ['partners', '👥', 'Đối tác', Partners]
+  ['customers', '👥', 'Khách hàng', Customers]
 ]
 
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken())
   const [tab, setTab] = useState('home')
   const [period, setPeriodState] = useState(loadPeriod)
-  const [ord, setOrd] = useState({ type: 'out', partner: '', q: '' })
+  const [ord, setOrd] = useState({ partner: '', q: '' })
   const [rev, setRev] = useState(0)
   const [sheets, setSheets] = useState([])
   const [toastMsg, setToastMsg] = useState('')
@@ -88,21 +90,24 @@ export default function App() {
   const [, , title, View] = TABS.find((t) => t[0] === tab)
   return (
     <Ctx.Provider value={ctx}>
-      <header className="top">
-        <h1>{title}</h1>
-        <button className="btn sec sm" onClick={logout}>Thoát</button>
-      </header>
-      <main>
-        <View />
-      </main>
-      <nav className="tabs">
-        {TABS.map(([k, icon, label]) => (
-          <button key={k} className={k === tab ? 'on' : ''} onClick={() => setTab(k)}>
-            <span>{icon}</span>
-            {label}
-          </button>
-        ))}
-      </nav>
+      {/* Header và thanh tab cố định; chỉ vùng <main> cuộn */}
+      <div className="app">
+        <header className="top">
+          <h1>{title}</h1>
+          <button className="btn sec sm" onClick={logout}>Thoát</button>
+        </header>
+        <main>
+          <View key={tab} />
+        </main>
+        <nav className="tabs">
+          {TABS.map(([k, icon, label]) => (
+            <button key={k} className={k === tab ? 'on' : ''} onClick={() => setTab(k)}>
+              <span>{icon}</span>
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
       {sheets.map((s) => (
         <div key={s.id} className="sheet-bg" onClick={(e) => e.target === e.currentTarget && s.close()}>
           <div className="sheet">{s.node}</div>

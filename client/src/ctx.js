@@ -12,7 +12,7 @@ export function useData(paths) {
   useEffect(() => {
     let live = true
     setState((s) => ({ ...s, loading: true, error: null }))
-    Promise.all(JSON.parse(key).map((p) => api(p)))
+    Promise.all(JSON.parse(key).map((p) => (typeof p === 'string' ? api(p) : api(p.path).catch(() => null))))
       .then((data) => live && setState({ loading: false, data, error: null }))
       .catch((error) => live && setState({ loading: false, data: null, error }))
     return () => {

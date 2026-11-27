@@ -28,3 +28,5 @@ export const periodLabel = (p) => {
 }
 
 export const qs = (...parts) => parts.filter(Boolean).join('&')
+
+export const SHIP_STATUS = { pending: 'Chờ giao', shipping: 'Đang giao', delivered: 'Đã giao' }
